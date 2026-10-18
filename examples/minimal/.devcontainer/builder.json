@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "tests": [
+    {
+      "id": "tools",
+      "name": "Git and shell",
+      "command": "git --version && bash --version",
+      "timeout": 30000,
+      "expectedCode": 0
+    }
+  ]
+}

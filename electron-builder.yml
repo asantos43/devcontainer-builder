@@ -1,0 +1,30 @@
+appId: dev.devcontainer.builder
+productName: DevContainer Builder
+directories:
+  output: release
+files:
+  - out/**/*
+  - package.json
+  - LICENSE
+asar: true
+asarUnpack:
+  - node_modules/@devcontainers/cli/**/*
+  - node_modules/node-pty/**/*
+npmRebuild: false
+artifactName: '${name}-${version}-${os}-${arch}.${ext}'
+linux:
+  target: [AppImage, deb]
+  category: Development
+  syncDesktopName: true
+  maintainer: Anderson Santos <asantos43@users.noreply.github.com>
+win:
+  target: [nsis]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+mac:
+  target: [dmg]
+  category: public.app-category.developer-tools
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
