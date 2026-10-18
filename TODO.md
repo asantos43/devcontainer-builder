@@ -23,6 +23,10 @@
 - [x] Docker/Podman selection and rootless API support
 - [x] Generated POSIX/PowerShell start, stop and shell scripts at project root
 
+## AI coding tools in Dev Container Features
+
+- [ ] Add selectable options in the Features editor to install Claude Code, Codex CLI and OpenCode inside the generated Dev Container.
+
 ## Template library and Dev Container import
 
 - [ ] Create reusable templates from existing Dev Container projects, preserving JSONC/Dockerfile/Compose comments, Features, supporting files and lifecycle helper scripts.
