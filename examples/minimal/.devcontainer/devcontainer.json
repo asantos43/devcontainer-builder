@@ -1,0 +1,8 @@
+{
+  // A small environment for testing the workbench.
+  "name": "Minimal Alpine",
+  "build": { "dockerfile": "Dockerfile", "context": ".." },
+  "workspaceMount": "type=bind,source=${localWorkspaceFolder},target=/workspace",
+  "workspaceFolder": "/workspace",
+  "remoteUser": "root"
+}
