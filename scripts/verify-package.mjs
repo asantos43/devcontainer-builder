@@ -36,6 +36,16 @@ try {
           app.getAppPath() + '/node_modules/@devcontainers/cli/devcontainer.js'
         ).replace('app.asar/', 'app.asar.unpacked/')
         const child = utilityProcess.fork(entry, ['--version'], { stdio: 'pipe' })
+        const drained = Promise.all(
+          [child.stdout, child.stderr].map((stream) =>
+            stream
+              ? new Promise((resolve) => {
+                  stream.once('end', resolve)
+                  stream.once('close', resolve)
+                })
+              : Promise.resolve(),
+          ),
+        )
         let output = ''
         child.stdout?.on('data', (b) => {
           output += String(b)
@@ -43,7 +53,9 @@ try {
         child.stderr?.on('data', (b) => {
           output += String(b)
         })
-        child.on('exit', (code) => resolve({ code, output }))
+        child.on('exit', (code) => {
+          void drained.then(() => resolve({ code, output }))
+        })
       }),
   )
   assert.equal(result.code, 0, result.output)

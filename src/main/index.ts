@@ -124,7 +124,10 @@ function register(win: BrowserWindow): void {
       allowFailure: true,
     })
     const remotes = await run('git', ['remote', '-v'], { cwd: p.root, allowFailure: true })
-    const status = await run('git', ['status', '--short'], { cwd: p.root, allowFailure: true })
+    const status = await run('git', ['-c', 'core.fsmonitor=false', 'status', '--short'], {
+      cwd: p.root,
+      allowFailure: true,
+    })
     const account = await run('gh', ['api', 'user', '--jq', '.login'], {
       cwd: p.root,
       allowFailure: true,
@@ -307,6 +310,7 @@ async function createWindow(): Promise<void> {
     minWidth: 1000,
     minHeight: 680,
     backgroundColor: '#17191e',
+    icon: path.join(app.getAppPath(), 'build/icon.png'),
     title: 'DevContainer Builder',
     show: false,
     webPreferences: {

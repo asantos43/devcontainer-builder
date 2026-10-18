@@ -22,3 +22,5 @@ DCB_FEATURE_SMOKE=1 npm run test:docker
 ```
 
 On PowerShell set the corresponding `$env:` variable before running the command.
+
+[Recorded implementation results](validation-results.md)

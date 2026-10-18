@@ -463,7 +463,12 @@ function Workbench({
                   className="icon-button"
                   title={t('Stop container', 'Parar container')}
                   disabled={busy}
-                  onClick={() => run(() => window.builder.runtime.stop(project.id))}
+                  onClick={() =>
+                    run(async () => {
+                      await window.builder.runtime.stop(project.id)
+                      await refreshState()
+                    })
+                  }
                 >
                   <Square size={14} />
                 </button>

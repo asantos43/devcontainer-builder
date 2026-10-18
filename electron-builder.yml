@@ -6,6 +6,7 @@ files:
   - out/**/*
   - package.json
   - LICENSE
+  - build/icon.png
 asar: true
 asarUnpack:
   - node_modules/@devcontainers/cli/**/*

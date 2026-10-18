@@ -123,10 +123,22 @@ export async function cli(args: string[], cwd: string, op: Operation): Promise<s
     }
     op.signal.addEventListener('abort', abort, { once: true })
     const timeout = setTimeout(() => child.kill(), 30 * 60 * 1000)
+    // utilityProcess emits exit before its pipes are guaranteed to be drained.
+    // The final JSON result can arrive after exit; wait for both pipe closures.
+    const drained = Promise.all(
+      [child.stdout, child.stderr].map((stream) =>
+        stream
+          ? new Promise<void>((resolve) => {
+              stream.once('end', resolve)
+              stream.once('close', resolve)
+              stream.once('error', () => resolve())
+            })
+          : Promise.resolve(),
+      ),
+    )
     child.stdout?.on('data', (data: Buffer) => {
-      const text = data.toString()
-      output = (output + text).slice(-4_000_000)
-      op.output(text)
+      output = (output + data.toString()).slice(-4_000_000)
+      // The final result includes merged configuration; keep it out of logs.
     })
     child.stderr?.on('data', (data: Buffer) => {
       const text = data.toString()
@@ -134,17 +146,19 @@ export async function cli(args: string[], cwd: string, op: Operation): Promise<s
       op.output(text)
     })
     child.on('exit', (code) => {
-      clearTimeout(timeout)
-      op.signal.removeEventListener('abort', abort)
-      if (code !== 0 || op.signal.aborted)
-        reject(
-          new Error(
-            op.signal.aborted
-              ? 'Cancelled. Inspect remaining resources.'
-              : errors || `CLI exited ${code}`,
-          ),
-        )
-      else resolve(output)
+      void drained.then(() => {
+        clearTimeout(timeout)
+        op.signal.removeEventListener('abort', abort)
+        if (code !== 0 || op.signal.aborted)
+          reject(
+            new Error(
+              op.signal.aborted
+                ? 'Cancelled. Inspect remaining resources.'
+                : errors || `CLI exited ${code}`,
+            ),
+          )
+        else resolve(output)
+      })
     })
   })
 }
@@ -222,7 +236,9 @@ async function startInternal(id: string, op: Operation): Promise<void> {
       '--include-configuration',
       '--include-merged-configuration',
       '--log-format',
-      'json',
+      'text',
+      '--log-level',
+      'info',
     ],
     p.root,
     op,
@@ -416,7 +432,10 @@ export async function openTerminal(id: string): Promise<string> {
       text: decoder.write(data),
     }),
   )
+  let finished = false
   const finish = (): void => {
+    if (finished) return
+    finished = true
     sessions.delete(session)
     emit({
       id: session,
@@ -427,6 +446,7 @@ export async function openTerminal(id: string): Promise<string> {
     })
   }
   stream.on('end', finish)
+  stream.on('close', finish)
   stream.on('error', (error) => {
     sessions.delete(session)
     emit({ id: session, projectId: id, channel: 'terminal', kind: 'error', text: String(error) })

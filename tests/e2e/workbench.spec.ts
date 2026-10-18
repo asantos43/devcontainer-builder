@@ -13,6 +13,7 @@ import { createRequire } from 'node:module'
 import { createHash } from 'node:crypto'
 import Docker from 'dockerode'
 import { unzipSync } from 'fflate'
+import { wizardDefaults } from '../../src/shared/config'
 declare global {
   interface Window {
     dcbEvents: string[]
@@ -107,6 +108,16 @@ test('bundled CLI executes with the Electron utility Node runtime', async () => 
     ({ utilityProcess }, entry) =>
       new Promise<{ code: number; output: string }>((resolve) => {
         const child = utilityProcess.fork(entry, ['--version'], { stdio: 'pipe' })
+        const drained = Promise.all(
+          [child.stdout, child.stderr].map((stream) =>
+            stream
+              ? new Promise<void>((resolve) => {
+                  stream.once('end', resolve)
+                  stream.once('close', resolve)
+                })
+              : Promise.resolve(),
+          ),
+        )
         let output = ''
         child.stdout?.on('data', (data) => {
           output += String(data)
@@ -114,7 +125,9 @@ test('bundled CLI executes with the Electron utility Node runtime', async () => 
         child.stderr?.on('data', (data) => {
           output += String(data)
         })
-        child.on('exit', (code) => resolve({ code, output }))
+        child.on('exit', (code) => {
+          void drained.then(() => resolve({ code, output }))
+        })
       }),
     createRequire(path.join(process.cwd(), 'package.json')).resolve(
       '@devcontainers/cli/devcontainer.js',
@@ -238,6 +251,12 @@ test('Docker runtime, interactive shell and exported ZIP rebuild through the rea
     await page.getByRole('button', { name: 'Construir e testar', exact: true }).click()
     await expect.poll(eventText, { timeout: 90000 }).toContain('passed: Runtime check')
     await expect(page.getByRole('alert')).toHaveCount(0)
+    await page.locator('.panel-tabs').getByRole('button', { name: 'TERMINAL', exact: true }).click()
+    await page.getByRole('button', { name: 'Conectar shell', exact: true }).click()
+    await expect(page.getByRole('button', { name: 'Desconectar', exact: true })).toBeVisible()
+    await page.getByTitle('Parar container').click()
+    await expect(page.locator('.statusbar')).toContainText('exited')
+    await expect(page.getByRole('button', { name: 'Conectar shell', exact: true })).toBeVisible()
   } finally {
     const client = new Docker({
       socketPath: process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') || '/var/run/docker.sock',
@@ -255,4 +274,44 @@ test('Docker runtime, interactive shell and exported ZIP rebuild through the rea
         await client.getContainer(item.Id).remove({ force: true, v: false })
     }
   }
+})
+
+test('private GitHub repository clones into an approved host workspace', async () => {
+  test.skip(
+    !process.env.DCB_GITHUB_E2E_REPO,
+    'Opt in with DCB_GITHUB_E2E_REPO=owner/repo and authenticated gh.',
+  )
+  const destination = path.join(root, 'private-clone')
+  await fs.mkdir(destination)
+  await application.evaluate(({ dialog }, directory) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [directory],
+    })) as typeof dialog.showOpenDialog
+  }, destination)
+  const data = {
+    ...wizardDefaults(),
+    root: destination,
+    repository: 'clone' as const,
+    repositoryUrl: process.env.DCB_GITHUB_E2E_REPO!,
+    image: 'alpine:3.22',
+    remoteUser: 'root',
+  }
+  const result = await page.evaluate(async (data) => {
+    await window.builder.projects.pickDirectory()
+    return window.builder.projects.create(data)
+  }, data)
+  expect(result.root).toBe(destination)
+  expect(await fs.readFile(path.join(destination, '.git/HEAD'), 'utf8')).toContain(
+    'refs/heads/main',
+  )
+  expect(
+    await fs.readFile(path.join(destination, '.devcontainer/devcontainer.json'), 'utf8'),
+  ).toContain('dockerfile')
+  expect(await fs.readFile(path.join(destination, '.devcontainer/Dockerfile'), 'utf8')).toContain(
+    'FROM alpine:3.22',
+  )
+  expect(await fs.readFile(path.join(destination, '.git/config'), 'utf8')).toContain(
+    process.env.DCB_GITHUB_E2E_REPO!,
+  )
 })

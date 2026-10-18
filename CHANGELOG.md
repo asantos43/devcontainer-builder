@@ -19,3 +19,10 @@ All notable changes are documented here.
 - MPL-2.0 license, bilingual guides and AI agent instructions.
 - Local Linux/Windows packaging and a macOS-only build/test workflow.
 - Domain, filesystem, Electron UI and opt-in Docker integration tests.
+
+### Fixed
+
+- Wait for CLI stdout/stderr to drain after utility-process exit before parsing the container result.
+- Keep merged configuration out of CLI logs and display readable build output.
+- Disconnect shell sessions and refresh runtime status when stopping a container.
+- Disable repository filesystem-monitor hooks during automatic Git status inspection.
