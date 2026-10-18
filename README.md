@@ -15,18 +15,24 @@ An Electron workbench for creating, editing, testing and exporting development c
 - Official Dev Containers CLI for creation; Dockerode for inspection, logs and interactive shell.
 - xterm.js terminal, custom environment checks and JSON reports.
 - ZIP export with file selection, dependency review and sensitive-file exclusions.
+- Docker or Podman runtime, including rootless sockets, TLS and SSH socket forwarding.
+- Built-in VS Code theme palettes for the workbench, Monaco editor and xterm terminals.
+- Compose service editing, Docker in Docker, registry login and OCI template creation.
+- SSH-agent/secret-reference assistants, volume cloning and TAR backup/restore.
+- Feature version/lockfile updates, configuration comparison, Trivy reports and application updates.
+- Generated start/stop/shell helpers in POSIX shell and PowerShell at each project root.
 - Portuguese/English UI. No hosted AI service is required.
 
 ## Run locally
 
-Requires Node.js 22.16+ and npm. Docker Engine/Desktop is required to run containers. Git and GitHub CLI are required for their respective repository actions.
+Requires Node.js 22.16+ and npm. Docker Engine/Desktop or Podman with its API socket is required to run containers. Git and GitHub CLI are required for their respective repository actions.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-The application bundles the Dev Containers CLI and uses Electron’s Node utility runtime. It does not require a global `devcontainer` installation. Docker, Git and `gh` remain host tools.
+The application bundles the Dev Containers CLI and uses Electron’s Node utility runtime. It does not require a global `devcontainer` installation. Docker/Podman, Git and `gh` remain host tools. Generated standalone helpers require Node.js and a global Dev Containers CLI (`npm install -g @devcontainers/cli`).
 
 ```sh
 npm run check          # TypeScript, ESLint, domain/file tests
@@ -34,7 +40,7 @@ npm run test:e2e       # Build and Playwright Electron tests (graphical session 
 npm run test:docker    # Real Docker build, lifecycle, mounts and exec; pulls Alpine
 npm run package:linux # Local Linux AppImage and DEB
 npm run package:win   # Local Windows NSIS installer
-npm run package:mac   # macOS DMG on macOS
+npm run package:mac   # macOS DMG/ZIP on macOS
 ```
 
 Linux and Windows validation/builds run locally. The only GitHub Actions workflow builds and tests macOS Intel and Apple Silicon. It does not publish releases. Signing/notarization requires maintainer credentials; see the guide.

@@ -25,16 +25,28 @@ import {
 import { Code, Diff, Field, JsonField, KeyValues, Modal, Notice, Section, useT } from './ui'
 import { FeaturePicker, ImagePicker, MountEditor } from './Wizard'
 
+import { helperNames } from '../../shared/helpers'
+import {
+  AccessAssistant,
+  CompareConfiguration,
+  ComposeEditor,
+  FeatureMaintenance,
+  SecurityTools,
+  VolumeManager,
+} from './Roadmap'
+
 export const tabs = [
   'general',
   'repository',
   'dockerfile',
+  'compose',
   'features',
   'environment',
   'mounts',
   'lifecycle',
   'tools',
   'tests',
+  'security',
   'source',
   'export',
 ] as const
@@ -44,6 +56,8 @@ export function tabLabel(tab: Tab, t: (en: string, pt: string) => string): strin
     general: t('Overview', 'Visão geral'),
     repository: t('Repository', 'Repositório'),
     dockerfile: 'Dockerfile',
+    compose: 'Compose',
+    security: t('Security', 'Segurança'),
     features: 'Features',
     environment: t('Environment', 'Ambiente'),
     mounts: t('Ports & volumes', 'Portas e volumes'),
@@ -386,6 +400,27 @@ function Repository({
           {t('Create and link origin', 'Criar e vincular origin')}
         </button>
       </Section>
+      <Section title={t('Helper scripts', 'Scripts auxiliares')}>
+        <button
+          onClick={() =>
+            run(async () => {
+              await window.builder.projects.scripts(project.id)
+              await refresh()
+            })
+          }
+        >
+          {t(
+            'Create missing start/stop/shell scripts',
+            'Criar scripts de start/stop/shell ausentes',
+          )}
+        </button>
+        <p className="muted">
+          {t(
+            'Scripts are placed at the project root. Existing files are preserved.',
+            'Scripts ficam na raiz do projeto. Arquivos existentes são preservados.',
+          )}
+        </p>
+      </Section>
       <Section title={t('Commit & push', 'Commit e push')}>
         <Field label={t('Commit message', 'Mensagem do commit')}>
           <input value={message} onChange={(e) => setMessage(e.target.value)} />
@@ -482,7 +517,9 @@ function ExportEditor({
                   (e) =>
                     e.path.startsWith('.devcontainer/') ||
                     e.path === '.devcontainer.json' ||
-                    e.path === '.dockerignore',
+                    e.path === '.dockerignore' ||
+                    helperNames.includes(e.path) ||
+                    Object.keys(project.composeFiles ?? {}).includes(e.path),
                 )
                 .map((e) => e.path),
             )
@@ -504,6 +541,7 @@ function ExportEditor({
                 setSelected([
                   project.configPath,
                   ...(project.dockerfilePath ? [project.dockerfilePath] : []),
+                  ...Object.keys(project.composeFiles ?? {}),
                 ])
               }
             >
@@ -684,6 +722,8 @@ export function Editors({
 }) {
   const t = useT()
   const { config: c, errors } = readConfig(project.configText)
+  if (tab === 'compose') return <ComposeEditor project={project} update={update} />
+  if (tab === 'security') return <SecurityTools project={project} run={run} />
   if (tab === 'dockerfile')
     return (
       <DockerfileEditor
@@ -700,6 +740,7 @@ export function Editors({
           'JSON com comentários. Propriedades desconhecidas são preservadas.',
         )}
       >
+        <CompareConfiguration project={project} run={run} />
         <Code
           value={project.configText}
           language="json"
@@ -717,15 +758,6 @@ export function Editors({
         {t(
           'Fix JSONC syntax in Source before using visual controls.',
           'Corrija a sintaxe JSONC na aba Código antes de usar os controles visuais.',
-        )}
-      </Notice>
-    )
-  if (c.dockerComposeFile)
-    return (
-      <Notice>
-        {t(
-          'Compose is available in Source only in this release.',
-          'Compose está disponível somente em Código nesta versão.',
         )}
       </Notice>
     )
@@ -767,10 +799,14 @@ export function Editors({
             <span>{t('Configuration', 'Configuração')}</span>
             <code>{project.configPath}</code>
             <span>{t('Build mode', 'Modo de build')}</span>
-            <code>{c.image ? 'image' : 'Dockerfile'}</code>
+            <code>{c.dockerComposeFile ? 'Compose' : c.image ? 'image' : 'Dockerfile'}</code>
           </div>
         </Section>
-        {typeof c.image === 'string' ? (
+        {c.dockerComposeFile ? (
+          <Notice>
+            {t('Edit services in the Compose tab.', 'Edite os serviços na aba Compose.')}
+          </Notice>
+        ) : typeof c.image === 'string' ? (
           <Section title={t('Container image', 'Imagem do container')}>
             <ImagePicker value={c.image} change={(image) => patch(['image'], image)} />
             <button
@@ -778,6 +814,8 @@ export function Editors({
                 let configText = patchConfig(project.configText, ['image'], undefined)
                 configText = patchConfig(configText, ['build'], {
                   dockerfile: 'Dockerfile',
+                  compose: 'Compose',
+                  security: t('Security', 'Segurança'),
                   context: '..',
                 })
                 update({
@@ -812,6 +850,7 @@ export function Editors({
           )}
         >
           <FeaturePicker value={obj(c.features)} change={(value) => patch(['features'], value)} />
+          <FeatureMaintenance project={project} update={update} run={run} />
         </Section>
         {Object.entries(obj(c.features)).map(([key, value]) => (
           <Section key={key} title={key}>
@@ -830,6 +869,7 @@ export function Editors({
   if (tab === 'environment')
     return (
       <>
+        <AccessAssistant project={project} update={update} />
         <Section title={t('Environment variables', 'Variáveis de ambiente')}>
           <KeyValues
             label="containerEnv"
@@ -904,6 +944,7 @@ export function Editors({
             <JsonField label="mounts" value={mounts} apply={(value) => patch(['mounts'], value)} />
           )}
         </Section>
+        <VolumeManager project={project} update={update} run={run} />
         <Section title={t('Ports', 'Portas')}>
           <JsonField
             label="forwardPorts"

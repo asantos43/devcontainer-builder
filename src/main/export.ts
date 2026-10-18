@@ -19,6 +19,10 @@ export async function exportPlan(id: string): Promise<ExportPlan> {
     }),
   )
   const dependencies: string[] = []
+  if (Object.keys(p.composeFiles ?? {}).length)
+    dependencies.push(
+      'Review Compose build contexts, env_file, configs, secrets and bind mounts before moving this export.',
+    )
   const { config } = readConfig(p.configText)
   const build =
     config.build && typeof config.build === 'object'
@@ -65,7 +69,9 @@ export async function exportZip(id: string, selected: string[]): Promise<string 
   const p = projectFor(id)
   const plan = await exportPlan(id)
   const available = new Set(plan.entries.map((e) => e.path))
-  const configFiles = [p.configPath, p.dockerfilePath].filter((v): v is string => Boolean(v))
+  const configFiles = [p.configPath, p.dockerfilePath, ...Object.keys(p.composeFiles ?? {})].filter(
+    (v): v is string => Boolean(v),
+  )
   for (const required of configFiles)
     if (!selected.includes(required)) throw new Error(`Required export file: ${required}`)
   const entries = await Promise.all(

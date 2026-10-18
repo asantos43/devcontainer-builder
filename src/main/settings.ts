@@ -3,13 +3,16 @@ import { app } from 'electron'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import type { Settings } from '../shared/types'
-const defaults: Settings = { locale: 'pt-BR', dockerEndpoint: '', shell: '/bin/bash', recent: [] }
+import { defaultSettings as defaults, settingsSchema } from '../shared/settings'
 function filename(): string {
   return path.join(app.getPath('userData'), 'settings.json')
 }
 export async function getSettings(): Promise<Settings> {
   try {
-    return { ...defaults, ...JSON.parse(await fs.readFile(filename(), 'utf8')) }
+    return settingsSchema.parse({
+      ...defaults,
+      ...JSON.parse(await fs.readFile(filename(), 'utf8')),
+    })
   } catch {
     return { ...defaults }
   }

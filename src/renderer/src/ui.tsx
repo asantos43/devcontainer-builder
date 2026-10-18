@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: MPL-2.0
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
-import Editor, { DiffEditor } from '@monaco-editor/react'
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import * as monaco from 'monaco-editor'
+import { restoreMonacoHoverServices } from './monaco'
 import { Plus, Trash2, X } from 'lucide-react'
 import type { Locale } from '../../shared/types'
+import { useTheme } from './themes'
 export const LocaleContext = createContext<Locale>('pt-BR')
 export function useT(): (en: string, pt: string) => string {
   const locale = useContext(LocaleContext)
@@ -94,26 +96,52 @@ export function Code({
   height?: string
   readOnly?: boolean
 }) {
-  return (
-    <Editor
-      height={height}
-      language={language}
-      theme="vs-dark"
-      value={value}
-      onChange={(v) => onChange?.(v ?? '')}
-      options={{
-        readOnly,
-        minimap: { enabled: false },
-        fontSize: 13,
-        fontFamily: '"JetBrains Mono", "Cascadia Code", monospace',
-        padding: { top: 16 },
-        scrollBeyondLastLine: false,
-        automaticLayout: true,
-        tabSize: 2,
-        wordWrap: 'on',
-      }}
-    />
-  )
+  const theme = useTheme()
+  const element = useRef<HTMLDivElement>(null)
+  const editor = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const changed = useRef(onChange)
+  const updating = useRef(false)
+  changed.current = onChange
+  useEffect(() => {
+    if (!element.current) return
+    const model = monaco.editor.createModel(value, language)
+    const instance = monaco.editor.create(element.current, {
+      model,
+      theme: theme.id,
+      readOnly,
+      minimap: { enabled: false },
+      fontSize: 13,
+      fontFamily: '"JetBrains Mono", "Cascadia Code", monospace',
+      padding: { top: 16 },
+      scrollBeyondLastLine: false,
+      automaticLayout: true,
+      tabSize: 2,
+      wordWrap: 'on',
+    })
+    restoreMonacoHoverServices()
+    editor.current = instance
+    const subscription = model.onDidChangeContent(() => {
+      if (!updating.current) changed.current?.(model.getValue())
+    })
+    return () => {
+      subscription.dispose()
+      instance.setModel(null)
+      instance.dispose()
+      model.dispose()
+      editor.current = null
+    }
+  }, [])
+  useEffect(() => {
+    const model = editor.current?.getModel()
+    if (model && model.getValue() !== value) {
+      updating.current = true
+      model.setValue(value)
+      updating.current = false
+    }
+    if (model) monaco.editor.setModelLanguage(model, language)
+    editor.current?.updateOptions({ readOnly })
+  }, [value, language, readOnly])
+  return <div ref={element} style={{ height }} />
 }
 export function Diff({
   original,
@@ -124,21 +152,44 @@ export function Diff({
   modified: string
   language?: string
 }) {
-  return (
-    <DiffEditor
-      height="360px"
-      language={language}
-      theme="vs-dark"
-      original={original}
-      modified={modified}
-      options={{
-        readOnly: true,
-        minimap: { enabled: false },
-        renderSideBySide: true,
-        automaticLayout: true,
-      }}
-    />
-  )
+  const theme = useTheme()
+  const element = useRef<HTMLDivElement>(null)
+  const models = useRef<{
+    original: monaco.editor.ITextModel
+    modified: monaco.editor.ITextModel
+  } | null>(null)
+  useEffect(() => {
+    if (!element.current) return
+    const pair = {
+      original: monaco.editor.createModel(original, language),
+      modified: monaco.editor.createModel(modified, language),
+    }
+    const instance = monaco.editor.createDiffEditor(element.current, {
+      theme: theme.id,
+      readOnly: true,
+      minimap: { enabled: false },
+      renderSideBySide: true,
+      automaticLayout: true,
+    })
+    instance.setModel(pair)
+    restoreMonacoHoverServices()
+    models.current = pair
+    return () => {
+      instance.setModel(null)
+      instance.dispose()
+      pair.original.dispose()
+      pair.modified.dispose()
+      models.current = null
+    }
+  }, [])
+  useEffect(() => {
+    if (!models.current) return
+    if (models.current.original.getValue() !== original) models.current.original.setValue(original)
+    if (models.current.modified.getValue() !== modified) models.current.modified.setValue(modified)
+    monaco.editor.setModelLanguage(models.current.original, language)
+    monaco.editor.setModelLanguage(models.current.modified, language)
+  }, [original, modified, language])
+  return <div ref={element} style={{ height: 360 }} />
 }
 export function JsonField({
   label,

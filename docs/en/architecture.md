@@ -13,3 +13,9 @@ The bundled CLI runs in Electron utilityProcess with the selected Docker endpoin
 Streams publish typed events. Renderer buffers and process captures are bounded. Operations carry cancellation signals; sessions/streams are disposed on close. ZIP selection rejects unsafe paths, symlinks and recognized sensitive files; dependency review is explicit.
 
 Development uses Vite, Tailwind and local Monaco workers. electron-builder packages the application, CLI and Electron runtime. Linux and Windows validation is local; only macOS has GitHub Actions. See validation for practical coverage and outstanding platform checks.
+
+The engine adapter selects Docker or Podman, shares its API endpoint with Dockerode, and handles TLS certificates or a local SSH socket tunnel. Podman event replay is isolated in a generated POSIX executable adapter. Compose documents participate in the same stale-write protection and rollback as JSONC and Dockerfiles. Project-root helpers reuse the same root/config ownership hash.
+
+Theme palettes are semantic CSS variables shared with Monaco and xterm. Monaco owns its editor/model lifetimes directly; the global hover delegate uses application-lifetime services to survive temporary diff disposal. Terminal components remain mounted behind preferences.
+
+Maintenance IPC covers native registry credential stores, staged OCI creation, reviewed Feature lockfiles, volume clone/TAR operations, filesystem Trivy reports and explicit updater actions. IPC exposes fixed operations; an explicit application preference selects the Compose provider executable. Native dialogs select file destinations. Persistent volumes are not overwritten by restoration. No code runs when a project is merely opened or saved.

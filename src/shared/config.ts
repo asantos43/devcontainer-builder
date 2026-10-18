@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { applyEdits, modify, parse, printParseErrorCode, type ParseError } from 'jsonc-parser'
+import { composeReferences } from './compose'
 import type { Config, Diagnostic, Mount, WizardData } from './types'
 
 export function readConfig(text: string): { config: Config; errors: Diagnostic[] } {
@@ -69,8 +70,20 @@ export function validateConfig(text: string): Diagnostic[] {
   const { config: c, errors } = readConfig(text)
   if (errors.length) return errors
   const d: Diagnostic[] = []
-  if (c.dockerComposeFile)
-    d.push({ level: 'error', message: 'Compose is available as source only in this version.' })
+  if (c.dockerComposeFile !== undefined) {
+    try {
+      composeReferences(c)
+    } catch (e) {
+      d.push({ level: 'error', message: String(e) })
+    }
+    if (typeof c.service !== 'string' || !c.service.trim())
+      d.push({ level: 'error', message: 'Compose requires a service name.' })
+    if (c.image || c.build || c.dockerFile)
+      d.push({
+        level: 'error',
+        message: 'Compose cannot be combined with image or build in devcontainer.json.',
+      })
+  }
   const sources = [Boolean(c.image), Boolean(c.build), Boolean(c.dockerFile)].filter(Boolean).length
   if (sources !== 1 && !c.dockerComposeFile)
     d.push({ level: 'error', message: 'Select exactly one base: image or Dockerfile build.' })
@@ -176,6 +189,11 @@ export const features = [
   { id: 'ghcr.io/devcontainers/features/common-utils:2', name: 'Common utilities', options: {} },
   { id: 'ghcr.io/devcontainers/features/node:1', name: 'Node.js', options: { version: 'lts' } },
   { id: 'ghcr.io/devcontainers/features/python:1', name: 'Python', options: { version: '3.12' } },
+  {
+    id: 'ghcr.io/devcontainers/features/docker-in-docker:2',
+    name: 'Docker in Docker',
+    options: { moby: true },
+  },
   { id: 'ghcr.io/devcontainers/features/git:1', name: 'Git', options: {} },
   { id: 'ghcr.io/devcontainers/features/github-cli:1', name: 'GitHub CLI', options: {} },
   {

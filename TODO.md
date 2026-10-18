@@ -10,19 +10,33 @@
 - [x] English/Portuguese UI and documentation
 - [x] Local Linux/Windows builds; macOS-only GitHub Actions
 
-## Later
+## Workbench extensions
 
-- Docker Compose visual editing and execution
-- Docker in Docker and remote Docker endpoints
-- Registry authentication and OCI templates
-- SSH agent and secrets assistants
-- Clone into volumes and volume backup/restore
-- Feature updates and configuration comparison
-- SBOM, vulnerability scanning and automatic application updates
+- [x] Docker Compose visual editing and execution
+- [x] Docker in Docker and remote Docker endpoints
+- [x] Registry authentication and OCI templates
+- [x] SSH agent and secrets assistants
+- [x] Clone into volumes and volume backup/restore
+- [x] Feature updates and configuration comparison
+- [x] Filesystem dependency SBOM/vulnerability reports through Trivy and opt-in application update checks
+- [x] Persistent VS Code theme palettes across workbench, editors and terminals
+- [x] Docker/Podman selection and rootless API support
+- [x] Generated POSIX/PowerShell start, stop and shell scripts at project root
 
 ## Release verification
 
 - [ ] Validate Windows installer and Docker Desktop on a Windows machine
 - [ ] Validate macOS Intel/Apple Silicon workflow and local Docker Desktop
 - [ ] Configure Windows signing and macOS signing/notarization credentials
-- [ ] Exercise GitHub remote creation/push with a dedicated test repository
+- [x] Exercise private GitHub remote creation, selected-file commit and push with a dedicated test repository
+- [ ] Delete archived validation repository `asantos43/dcb-validation-dcb-e2e-x1skxl` with an account/token that can delete repositories
+- [ ] Validate SSH/TLS against actual remote engines and Podman Machine on macOS/Windows
+- [ ] Validate signed update delivery from a published release on each platform
+
+## Follow-up capabilities
+
+- [ ] Import arbitrary VS Code theme extensions and their complete token grammars
+- [ ] Scan built container images in addition to filesystem dependencies
+- [ ] Clone private repositories directly into volumes with isolated credential forwarding
+- [ ] Restore archives with safe symbolic/hard links and special metadata
+- [ ] OCI template publishing and dedicated secret-store integrations

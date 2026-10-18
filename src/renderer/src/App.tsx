@@ -39,7 +39,10 @@ import { Wizard } from './Wizard'
 import { Diff, Field, LocaleContext, Modal, Notice, Section, useT } from './ui'
 import { InteractiveTerminal, OutputTerminal } from './Panels'
 
-const fallback: Settings = { locale: 'pt-BR', dockerEndpoint: '', shell: '/bin/bash', recent: [] }
+import { defaultSettings as fallback } from '../../shared/settings'
+import { themes } from '../../shared/themes'
+import { ThemeProvider } from './themes'
+import { ApplicationTools } from './Roadmap'
 function isDirty(p: Project | undefined): boolean {
   if (!p) return false
   let aux
@@ -51,6 +54,7 @@ function isDirty(p: Project | undefined): boolean {
   return (
     p.configText !== p.baseline.configText ||
     p.dockerfile !== p.baseline.dockerfile ||
+    JSON.stringify(p.composeFiles ?? {}) !== JSON.stringify(p.baseline.composeFiles ?? {}) ||
     JSON.stringify(p.auxiliary) !== JSON.stringify(aux)
   )
 }
@@ -60,9 +64,11 @@ export function App() {
     void window.builder.settings.get().then(setSettings)
   }, [])
   return (
-    <LocaleContext.Provider value={settings.locale}>
-      <Workbench settings={settings} setSettings={setSettings} />
-    </LocaleContext.Provider>
+    <ThemeProvider id={settings.theme}>
+      <LocaleContext.Provider value={settings.locale}>
+        <Workbench settings={settings} setSettings={setSettings} />
+      </LocaleContext.Provider>
+    </ThemeProvider>
   )
 }
 function Workbench({
@@ -122,6 +128,12 @@ function Workbench({
         const text = (event.kind === 'output' ? '' : `\n[${event.kind}] `) + event.text
         if (event.channel === 'tests') setTestOutput((v) => (v + text).slice(-500000))
         else setOutput((v) => (v + text).slice(-500000))
+        if (event.kind === 'output' && event.id !== 'github-login')
+          setActive((v) =>
+            v.some((op) => op.id === event.id)
+              ? v
+              : [...v, { id: event.id, channel: event.channel }],
+          )
         if (event.kind !== 'output') {
           setActive((v) => v.filter((op) => op.id !== event.id))
           if (event.kind === 'error') setError(event.text)
@@ -239,7 +251,11 @@ function Workbench({
       action === 'test'
         ? await window.builder.runtime.test(project.id)
         : await window.builder.runtime.start(project.id)
-    setActive((v) => [...v, { id, channel: action === 'test' ? 'tests' : 'build' }])
+    setActive((v) =>
+      v.some((op) => op.id === id)
+        ? v
+        : [...v, { id, channel: action === 'test' ? 'tests' : 'build' }],
+    )
     setPanel(action === 'test' ? 'tests' : 'logs')
   }
   const iconFor = (value: Tab) =>
@@ -504,6 +520,26 @@ function Workbench({
               </button>
             </div>
           )}
+          {active.some((op) => op.channel !== 'logs') && (
+            <div className="operation-progress">
+              <span>
+                <Loader2 size={13} className="spin" />
+                {t('Operation in progress', 'Operação em andamento')}
+              </span>
+              {active
+                .filter((op) => op.channel !== 'logs')
+                .map((op) => (
+                  <button
+                    key={op.id}
+                    onClick={() =>
+                      void window.builder.operations.cancel(op.id).catch((e) => setError(String(e)))
+                    }
+                  >
+                    {t('Cancel operation', 'Cancelar operação')}
+                  </button>
+                ))}
+            </div>
+          )}
           {message && (
             <div className="toast">
               <Check size={15} />
@@ -517,6 +553,9 @@ function Workbench({
                 change={setSettings}
                 capabilities={capabilities}
                 setCapabilities={setCapabilities}
+                opened={(p) => {
+                  if (canLeave()) void opened(p)
+                }}
                 run={run}
               />
             ) : project ? (
@@ -625,8 +664,11 @@ function Workbench({
               </div>
             )}
           </div>
-          {project && !preferences && (
-            <section className="bottom-panel" style={{ height: panelHeight }}>
+          {project && (
+            <section
+              className="bottom-panel"
+              style={{ height: panelHeight, display: preferences ? 'none' : 'flex' }}
+            >
               <div
                 className="panel-resizer"
                 role="separator"
@@ -701,7 +743,9 @@ function Workbench({
                     onClick={() =>
                       run(async () => {
                         const id = await window.builder.runtime.logs(project.id)
-                        setActive((v) => [...v, { id, channel: 'logs' }])
+                        setActive((v) =>
+                          v.some((op) => op.id === id) ? v : [...v, { id, channel: 'logs' }],
+                        )
                         setPanel('logs')
                       })
                     }
@@ -816,6 +860,18 @@ function Workbench({
           <div className="modal-body">
             <h3>{project.configPath}</h3>
             <Diff original={project.baseline.configText} modified={project.configText} />
+            {Object.entries(project.composeFiles ?? {})
+              .filter(([file, text]) => text !== project.baseline.composeFiles?.[file])
+              .map(([file, text]) => (
+                <div key={file}>
+                  <h3>{file}</h3>
+                  <Diff
+                    language="yaml"
+                    original={project.baseline.composeFiles?.[file] ?? ''}
+                    modified={text}
+                  />
+                </div>
+              ))}
             {project.dockerfile !== project.baseline.dockerfile && (
               <>
                 <h3>Dockerfile</h3>
@@ -912,12 +968,14 @@ function PlusGlyph() {
   return <span style={{ fontSize: 20, lineHeight: 1 }}>+</span>
 }
 function SettingsEditor({
+  opened,
   settings,
   change,
   capabilities,
   setCapabilities,
   run,
 }: {
+  opened: (p: Project) => void
   settings: Settings
   change: (value: Settings) => void
   capabilities: Capability[]
@@ -926,7 +984,9 @@ function SettingsEditor({
 }) {
   const t = useT()
   const [draft, setDraft] = useState(settings)
-  const [contexts, setContexts] = useState<{ name: string; endpoint: string }[]>([])
+  const [contexts, setContexts] = useState<
+    { name: string; endpoint: string; socketPath?: string }[]
+  >([])
   return (
     <div className="editor-content">
       <Section
@@ -945,11 +1005,47 @@ function SettingsEditor({
             <option value="en">English</option>
           </select>
         </Field>
+        <Field label={t('Color theme', 'Tema visual')}>
+          <select
+            value={draft.theme}
+            onChange={(e) => setDraft({ ...draft, theme: e.target.value })}
+          >
+            {themes.map((theme) => (
+              <option key={theme.id} value={theme.id}>
+                {theme.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label={t('Container engine', 'Motor de containers')}>
+          <select
+            value={draft.engine}
+            onChange={(e) => {
+              setDraft({
+                ...draft,
+                engine: e.target.value as Settings['engine'],
+                dockerEndpoint: '',
+              })
+              setContexts([])
+            }}
+          >
+            <option value="docker">Docker</option>
+            <option value="podman">Podman</option>
+          </select>
+        </Field>
+        {draft.engine === 'podman' && (
+          <Notice>
+            {t(
+              'Enable the rootless API socket with systemctl --user start podman.socket on Linux, or start Podman Machine on macOS/Windows. Rootless Features may require additional privileges.',
+              'Ative o socket da API com systemctl --user start podman.socket no Linux ou inicie o Podman Machine no macOS/Windows. Features em modo rootless podem exigir privilégios adicionais.',
+            )}
+          </Notice>
+        )}
         <Field
-          label={t('Docker endpoint', 'Endpoint Docker')}
+          label={t('Engine endpoint', 'Endpoint do motor')}
           hint={t(
-            'Empty follows DOCKER_HOST or the current Docker context. Unix sockets and Windows named pipes only.',
-            'Vazio usa DOCKER_HOST ou o contexto Docker atual. Apenas sockets Unix e named pipes Windows.',
+            'Empty discovers the selected engine. Supports unix://, npipe://, ssh://user@host and TCP/TLS endpoints.',
+            'Vazio detecta o motor selecionado. Aceita unix://, npipe://, ssh://usuario@host e endpoints TCP/TLS.',
           )}
         >
           <input
@@ -959,19 +1055,67 @@ function SettingsEditor({
           />
         </Field>
         <button
-          onClick={() => run(async () => setContexts(await window.builder.system.contexts()))}
+          onClick={() =>
+            run(async () => setContexts(await window.builder.system.contexts(draft.engine)))
+          }
         >
-          {t('Discover Docker contexts', 'Consultar contextos Docker')}
+          {t('Discover engine connections', 'Consultar conexões do motor')}
         </button>
         {contexts.map((c) => (
           <button
             key={c.name}
-            disabled={!c.endpoint.startsWith('unix://') && !c.endpoint.startsWith('npipe://')}
-            onClick={() => setDraft({ ...draft, dockerEndpoint: c.endpoint })}
+
+            onClick={() =>
+              setDraft({ ...draft, dockerEndpoint: c.endpoint, sshSocketPath: c.socketPath ?? '' })
+            }
           >
             {c.name} · {c.endpoint}
           </button>
         ))}
+        <Field
+          label={t('Compose executable (optional)', 'Executável Compose (opcional)')}
+          hint={t(
+            'For Podman, install a compatible Compose provider and enter its executable path.',
+            'Para Podman, instale um provedor Compose compatível e informe o caminho do executável.',
+          )}
+        >
+          <input
+            value={draft.composePath}
+            onChange={(e) => setDraft({ ...draft, composePath: e.target.value })}
+          />
+        </Field>
+        <Field
+          label={t('TLS certificate directory', 'Diretório de certificados TLS')}
+          hint="ca.pem, cert.pem, key.pem"
+        >
+          <input
+            value={draft.tlsCertPath}
+            onChange={(e) => setDraft({ ...draft, tlsCertPath: e.target.value })}
+          />
+        </Field>
+        <Field
+          label={t('Remote SSH socket path', 'Caminho remoto do socket SSH')}
+          hint={t(
+            'SSH uses your agent and known_hosts. For rootless Podman, specify /run/user/UID/podman/podman.sock.',
+            'SSH usa seu agente e known_hosts. Para Podman rootless, informe /run/user/UID/podman/podman.sock.',
+          )}
+        >
+          <input
+            value={draft.sshSocketPath}
+            onChange={(e) => setDraft({ ...draft, sshSocketPath: e.target.value })}
+          />
+        </Field>
+        <label className="checkbox">
+          <input
+            type="checkbox"
+            checked={draft.autoUpdate}
+            onChange={(e) => setDraft({ ...draft, autoUpdate: e.target.checked })}
+          />
+          {t(
+            'Check for application updates automatically',
+            'Verificar atualizações do aplicativo automaticamente',
+          )}
+        </label>
         <Field label={t('Preferred shell', 'Shell preferido')}>
           <input
             value={draft.shell}
@@ -993,7 +1137,7 @@ function SettingsEditor({
           }
         >
           <RefreshCw size={14} />
-          {t('Check tools & Docker', 'Verificar ferramentas e Docker')}
+          {t('Check tools & engine', 'Verificar ferramentas e motor')}
         </button>
         <div className="capabilities">
           {capabilities.map((c) => (
@@ -1008,6 +1152,7 @@ function SettingsEditor({
           {t('Sign in to GitHub', 'Entrar no GitHub')}
         </button>
       </Section>
+      <ApplicationTools run={run} opened={opened} />
     </div>
   )
 }

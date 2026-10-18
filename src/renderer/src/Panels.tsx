@@ -5,25 +5,16 @@ import { FitAddon } from '@xterm/addon-fit'
 import { PlugZap, Unplug } from 'lucide-react'
 import type { Project } from '../../shared/types'
 import { useT } from './ui'
+import { useTheme, terminalColors } from './themes'
 import '@xterm/xterm/css/xterm.css'
 
-const terminalTheme = {
-  background: '#14161a',
-  foreground: '#cdd2dc',
-  cursor: '#67d2b5',
-  selectionBackground: '#2b3c4b',
-  black: '#22252d',
-  red: '#ed8796',
-  green: '#a6da95',
-  yellow: '#eed49f',
-  blue: '#8aadf4',
-  magenta: '#c6a0f6',
-  cyan: '#8bd5ca',
-  white: '#cad3f5',
-}
 export function OutputTerminal({ text }: { text: string }) {
+  const theme = useTheme()
   const element = useRef<HTMLDivElement>(null)
   const terminal = useRef<Terminal | undefined>(undefined)
+  useEffect(() => {
+    if (terminal.current) terminal.current.options.theme = terminalColors(theme)
+  }, [theme])
   const previous = useRef('')
   useEffect(() => {
     if (!element.current) return
@@ -33,7 +24,7 @@ export function OutputTerminal({ text }: { text: string }) {
       fontSize: 12,
       fontFamily: 'monospace',
       scrollback: 5000,
-      theme: terminalTheme,
+      theme: terminalColors(theme),
     })
     const fit = new FitAddon()
     term.loadAddon(fit)
@@ -70,8 +61,12 @@ export function InteractiveTerminal({
   error: (value: string) => void
 }) {
   const t = useT()
+  const theme = useTheme()
   const element = useRef<HTMLDivElement>(null)
   const terminal = useRef<Terminal | undefined>(undefined)
+  useEffect(() => {
+    if (terminal.current) terminal.current.options.theme = terminalColors(theme)
+  }, [theme])
   const fit = useRef<FitAddon | undefined>(undefined)
   const session = useRef<string | undefined>(undefined)
   const [connected, setConnected] = useState(false)
@@ -83,7 +78,7 @@ export function InteractiveTerminal({
       fontFamily: 'monospace',
       scrollback: 5000,
       cursorBlink: true,
-      theme: terminalTheme,
+      theme: terminalColors(theme),
     })
     const addon = new FitAddon()
     term.loadAddon(addon)

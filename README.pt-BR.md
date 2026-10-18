@@ -15,18 +15,24 @@ Aplicativo Electron para criar, editar, testar e exportar ambientes de desenvolv
 - CLI oficial de Dev Containers; Dockerode para inspeção, logs e shell.
 - Terminal xterm.js, verificações personalizadas e relatórios JSON.
 - ZIP com seleção de arquivos, revisão de dependências e exclusão de arquivos sensíveis.
+- Docker ou Podman, incluindo sockets rootless, TLS e encaminhamento do socket por SSH.
+- Paletas de temas do VS Code no aplicativo, editor Monaco e terminais xterm.
+- Edição de serviços Compose, Docker in Docker, login em registries e templates OCI.
+- Assistentes de agente SSH/secrets, clone em volumes e backup/restauração TAR.
+- Versões/lockfile de Features, comparação, relatórios Trivy e atualização do aplicativo.
+- Scripts de start/stop/shell em POSIX shell e PowerShell na raiz dos projetos gerados.
 - Interface em português e inglês. Não exige serviço de IA.
 
 ## Executar localmente
 
-Requer Node.js 22.16+ e npm. Para executar containers, instale Docker Engine/Desktop. Git e GitHub CLI são necessários para as respectivas ações de repositório.
+Requer Node.js 22.16+ e npm. Para executar containers, instale Docker Engine/Desktop ou Podman com o socket da API ativo. Git e GitHub CLI são necessários para as respectivas ações de repositório.
 
 ```sh
 npm ci
 npm run dev
 ```
 
-A CLI de Dev Containers acompanha o aplicativo e usa o runtime Node utilitário do Electron. Não é necessária instalação global de `devcontainer`. Docker, Git e `gh` são ferramentas do host.
+A CLI de Dev Containers acompanha o aplicativo e usa o runtime Node utilitário do Electron. Não é necessária instalação global de `devcontainer`. Docker/Podman, Git e `gh` são ferramentas do host. Os scripts independentes exigem Node.js e a CLI global de Dev Containers (`npm install -g @devcontainers/cli`).
 
 ```sh
 npm run check          # TypeScript, ESLint e testes de domínio/arquivos
@@ -34,7 +40,7 @@ npm run test:e2e       # Build e testes Electron (exige sessão gráfica)
 npm run test:docker    # Docker real: build, hooks, mounts e exec; baixa Alpine
 npm run package:linux # AppImage e DEB locais
 npm run package:win   # Instalador NSIS local no Windows
-npm run package:mac   # DMG em máquina macOS
+npm run package:mac   # DMG/ZIP em máquina macOS
 ```
 
 Linux e Windows são testados e empacotados localmente. O único workflow GitHub Actions é para macOS Intel e Apple Silicon e não publica releases. Assinatura/notarização dependem de credenciais do mantenedor.

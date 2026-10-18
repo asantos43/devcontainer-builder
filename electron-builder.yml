@@ -24,8 +24,15 @@ nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
 mac:
-  target: [dmg]
+  target: [dmg, zip]
   category: public.app-category.developer-tools
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
+
+publish:
+  provider: github
+  owner: asantos43
+  repo: devcontainer-builder
+  private: true
+  releaseType: draft
