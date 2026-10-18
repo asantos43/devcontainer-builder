@@ -7,7 +7,12 @@ import type { Project, Settings } from '../shared/types'
 import * as projects from './projects'
 import * as runtime from './runtime'
 import { getSettings, saveSettings } from './settings'
-import { cancel, cancelAll, run, setEventSink } from './operations'
+import { settingsSchema } from '../shared/settings'
+import * as maintenance from './maintenance'
+import * as volumes from './volumes'
+import { automaticUpdateCheck } from './maintenance'
+import { closeEngineConnections } from './engine'
+import { cancel, cancelAll, hasActiveOperations, run, setEventSink } from './operations'
 import { exportPlan, exportZip } from './export'
 import { exclusionReason, safeArchivePath } from '../shared/paths'
 
@@ -32,8 +37,14 @@ const projectInput = z.object({
   configText: text,
   dockerfile: text,
   auxiliary,
+  composeFiles: z.record(text).optional(),
   files: z.array(short).max(10000),
-  baseline: z.object({ configText: text, dockerfile: text, auxiliaryText: text }),
+  baseline: z.object({
+    configText: text,
+    dockerfile: text,
+    auxiliaryText: text,
+    composeFiles: z.record(text).optional(),
+  }),
 })
 const mount = z.object({
   type: z.enum(['bind', 'volume']),
@@ -66,12 +77,6 @@ const wizard = z.object({
   env: z.record(z.string()),
   postCreateCommand: text,
 })
-const settingsInput = z.object({
-  locale: z.enum(['en', 'pt-BR']),
-  dockerEndpoint: short.refine((s) => !s || s.startsWith('unix://') || s.startsWith('npipe://')),
-  shell: short,
-  recent: z.array(short).max(12),
-})
 
 async function jsonFetch(url: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
@@ -97,9 +102,26 @@ function register(win: BrowserWindow): void {
   }
   const none = z.undefined()
   handle('settings:get', none, getSettings)
-  handle('settings:save', settingsInput, async (value) =>
-    saveSettings({ ...value, recent: (await getSettings()).recent } as Settings),
-  )
+  handle('settings:save', settingsSchema, async (value) => {
+    const previous = await getSettings()
+    const connectionChanged = [
+      'engine',
+      'dockerEndpoint',
+      'tlsCertPath',
+      'sshSocketPath',
+      'composePath',
+    ].some((key) => previous[key as keyof Settings] !== value[key as keyof Settings])
+    if (connectionChanged && (runtime.hasActiveRuntimeOperations() || hasActiveOperations()))
+      throw new Error(
+        'Close shell sessions and finish active runtime operations before switching engines.',
+      )
+    if (connectionChanged) {
+      await closeEngineConnections()
+      runtime.resetEngineState()
+    }
+    return saveSettings({ ...value, recent: previous.recent })
+  })
+  handle('projects:scripts', id, projects.createHelperScripts)
   handle('projects:pickDirectory', none, projects.pickDirectory)
   handle('projects:open', none, projects.openProject)
   handle('projects:openRecent', short, async (root) => {
@@ -116,7 +138,7 @@ function register(win: BrowserWindow): void {
   })
   handle('projects:changed', id, projects.hasChanged)
   handle('system:capabilities', none, runtime.capabilities)
-  handle('system:contexts', none, runtime.contexts)
+  handle('system:contexts', z.enum(['docker', 'podman']).optional(), runtime.contexts)
   handle('git:info', id, async (value) => {
     const p = projects.projectFor(value)
     const branch = await run('git', ['branch', '--show-current'], {
@@ -262,13 +284,63 @@ function register(win: BrowserWindow): void {
   handle(
     'docker:createVolume',
     z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/),
-    async (name) =>
-      (
-        await (
-          await runtime.docker()
-        ).createVolume({ Name: name, Labels: { 'devcontainer-builder.data': 'persistent' } })
-      ).Name,
+    async (name) => {
+      await (
+        await runtime.docker()
+      ).createVolume({ Name: name, Labels: { 'devcontainer-builder.data': 'persistent' } })
+      return name
+    },
   )
+  handle(
+    'maintenance:registryLogin',
+    z.object({
+      server: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9.:-]*$/),
+      username: short.min(1),
+      password: z.string().min(1).max(16000),
+    }),
+    (value) => maintenance.registryLogin(value.server, value.username, value.password),
+  )
+  handle(
+    'maintenance:registryLogout',
+    z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9.:-]*$/),
+    maintenance.registryLogout,
+  )
+  handle(
+    'maintenance:applyTemplate',
+    z.object({
+      reference: z
+        .string()
+        .regex(/^[a-zA-Z0-9][a-zA-Z0-9_./:@-]*$/)
+        .max(512),
+      options: z.record(z.string().max(4096)),
+    }),
+    (value) => maintenance.applyTemplate(value.reference, value.options),
+  )
+  handle('maintenance:featureVersions', id, maintenance.featureVersions)
+  handle('maintenance:featureLock', id, maintenance.featureLock)
+  handle('maintenance:saveFeatureLock', z.object({ id, content: text }), (value) =>
+    maintenance.saveFeatureLock(value.id, value.content),
+  )
+  handle('maintenance:compare', none, maintenance.compare)
+  const volumeName = z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$/)
+  handle('maintenance:backupVolume', volumeName, volumes.backupVolume)
+  handle('maintenance:restoreVolume', volumeName, volumes.restoreVolume)
+  handle(
+    'maintenance:cloneVolume',
+    z.object({
+      name: volumeName,
+      url: z.string().url().max(4096),
+      branch: z
+        .string()
+        .regex(/^[a-zA-Z0-9][a-zA-Z0-9_./-]*$/)
+        .max(255),
+    }),
+    (value) => volumes.cloneVolume(value.name, value.url, value.branch),
+  )
+  handle('maintenance:scan', z.object({ id, kind: z.enum(['sbom', 'vulnerabilities']) }), (value) =>
+    maintenance.scan(value.id, value.kind),
+  )
+  handle('maintenance:update', z.enum(['check', 'download', 'install']), maintenance.update)
   handle('runtime:start', id, runtime.start)
   handle('runtime:stop', id, runtime.stop)
   handle('runtime:state', id, runtime.runtimeState)
@@ -357,12 +429,14 @@ async function createWindow(): Promise<void> {
 app
   .whenReady()
   .then(createWindow)
+  .then(automaticUpdateCheck)
   .catch((error) => {
     console.error(error)
     app.quit()
   })
 app.on('window-all-closed', () => app.quit())
 app.on('before-quit', () => {
+  void closeEngineConnections()
   cancelAll()
   runtime.closeAllSessions()
 })

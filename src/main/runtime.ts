@@ -9,6 +9,7 @@ import { StringDecoder } from 'node:string_decoder'
 import { readConfig, validateConfig, parseMount } from '../shared/config'
 import type { Capability, RuntimeState, TestResult } from '../shared/types'
 import { getSettings } from './settings'
+import { podmanAdapter } from './podman'
 import { projectFor, checkedPath, hasChanged } from './projects'
 import { commandEnv, emit, launch, run, redact, type Operation } from './operations'
 
@@ -34,46 +35,11 @@ function ownership(id: string): string {
     .digest('hex')
     .slice(0, 24)
 }
-export async function endpoint(): Promise<string> {
-  const settings = await getSettings()
-  if (settings.dockerEndpoint) return settings.dockerEndpoint
-  if (process.env.DOCKER_HOST) return process.env.DOCKER_HOST
-  try {
-    const result = await run(
-      'docker',
-      ['context', 'inspect', '--format', '{{.Endpoints.docker.Host}}'],
-      { timeout: 10000 },
-    )
-    return result.stdout.trim()
-  } catch {
-    return process.platform === 'win32'
-      ? 'npipe:////./pipe/docker_engine'
-      : 'unix:///var/run/docker.sock'
-  }
-}
-export async function docker(): Promise<Docker> {
-  const address = await endpoint()
-  if (address.startsWith('unix://')) return new Docker({ socketPath: address.slice(7) })
-  if (address.startsWith('npipe://'))
-    return new Docker({ socketPath: '\\\\.\\pipe\\' + address.split('/').filter(Boolean).at(-1) })
-  throw new Error('Remote Docker SSH/TCP endpoints are not supported in this version.')
-}
-export async function contexts(): Promise<{ name: string; endpoint: string }[]> {
-  const result = await run('docker', ['context', 'ls', '--format', '{{json .}}'], {
-    timeout: 10000,
-  })
-  return result.stdout
-    .trim()
-    .split('\n')
-    .filter(Boolean)
-    .map((line) => {
-      const row = JSON.parse(line)
-      return { name: row.Name as string, endpoint: row.DockerEndpoint as string }
-    })
-}
+export { endpoint, docker, contexts } from './engine'
+import { endpoint, docker, engineConnection } from './engine'
 export async function capabilities(): Promise<Capability[]> {
   const items = await Promise.all(
-    ['git', 'gh', 'docker'].map(async (name) => {
+    ['git', 'gh', (await getSettings()).engine || 'docker', 'trivy'].map(async (name) => {
       try {
         const r = await run(name, ['--version'], { timeout: 10000 })
         return { name, ok: true, detail: r.stdout.trim() }
@@ -84,9 +50,9 @@ export async function capabilities(): Promise<Capability[]> {
   )
   try {
     await (await docker()).ping()
-    items.push({ name: 'Docker daemon', ok: true, detail: await endpoint() })
+    items.push({ name: 'Container engine API', ok: true, detail: await endpoint() })
   } catch (e) {
-    items.push({ name: 'Docker daemon', ok: false, detail: String(e) })
+    items.push({ name: 'Container engine API', ok: false, detail: String(e) })
   }
   try {
     const r = await run('gh', ['auth', 'status'], { timeout: 10000 })
@@ -103,18 +69,25 @@ export function cliEntry(): string {
 }
 export async function cli(args: string[], cwd: string, op: Operation): Promise<string> {
   if (op.signal.aborted) throw new Error('Operation cancelled.')
-  const host = await endpoint()
+  const command = args[0]
+  const connection = ['up', 'build', 'exec', 'upgrade'].includes(command)
+    ? await engineConnection()
+    : { settings: await getSettings(), env: {} }
+  if (['up', 'build', 'exec', 'upgrade'].includes(command)) {
+    args = [
+      ...args,
+      '--docker-path',
+      connection.settings.engine === 'podman' ? await podmanAdapter() : 'docker',
+    ]
+    if (connection.settings.composePath)
+      args.push('--docker-compose-path', connection.settings.composePath)
+  }
   return new Promise((resolve, reject) => {
     const child = utilityProcess.fork(cliEntry(), args, {
       cwd,
       stdio: 'pipe',
       serviceName: 'Dev Containers CLI',
-      env: commandEnv({
-        DOCKER_HOST: host,
-        DOCKER_CONTEXT: '',
-        DOCKER_TLS_VERIFY: '',
-        DOCKER_CERT_PATH: '',
-      }),
+      env: commandEnv({ ...connection.env, DCB_PODMAN_EVENTS_SINCE: new Date().toISOString() }),
     })
     let output = ''
     let errors = ''
@@ -204,6 +177,7 @@ async function ownedContainer(id: string): Promise<Docker.Container> {
 async function validateMountSources(id: string): Promise<void> {
   const p = projectFor(id)
   const { config } = readConfig(p.configText)
+  if (/^(ssh|tcp|https?):/.test(await endpoint())) return
   for (const raw of [
     ...(Array.isArray(config.mounts) ? config.mounts : []),
     ...(config.workspaceMount ? [config.workspaceMount] : []),
@@ -289,12 +263,31 @@ export function start(id: string): string {
     }
   })
 }
+async function environmentContainers(id: string): Promise<Docker.Container[]> {
+  const primary = await ownedContainer(id)
+  const info = await primary.inspect()
+  const project = info.Config.Labels?.['com.docker.compose.project']
+  const files = info.Config.Labels?.['com.docker.compose.project.config_files']
+  if (!project || !files) return [primary]
+  const client = await docker()
+  const related = await client.listContainers({
+    all: true,
+    filters: JSON.stringify({
+      label: [
+        `com.docker.compose.project=${project}`,
+        `com.docker.compose.project.config_files=${files}`,
+      ],
+    }),
+  })
+  return [primary, ...related.filter((c) => c.Id !== info.Id).map((c) => client.getContainer(c.Id))]
+}
 export async function stop(id: string): Promise<void> {
   if (busy.has(id)) throw new Error('Cancel the active operation first.')
   closeProjectSessions(id)
-  const c = await ownedContainer(id)
-  const info = await c.inspect()
-  if (info.State.Running) await c.stop()
+  for (const c of await environmentContainers(id)) {
+    const info = await c.inspect()
+    if (info.State.Running) await c.stop()
+  }
   states.set(id, { ...states.get(id), status: 'exited' })
 }
 export async function clean(id: string): Promise<void> {
@@ -303,14 +296,14 @@ export async function clean(id: string): Promise<void> {
     type: 'warning',
     message: 'Remove the managed container? / Remover o container gerenciado?',
     detail:
-      'Persistent volumes and images are preserved. / Volumes persistentes e imagens serão preservados.',
+      'Associated Compose service containers are included. Persistent volumes and images are preserved. / Containers de serviços Compose associados estão incluídos. Volumes e imagens são preservados.',
     buttons: ['Cancel / Cancelar', 'Remove / Remover'],
     cancelId: 0,
     defaultId: 0,
   })
   if (response.response !== 1) return
   closeProjectSessions(id)
-  await (await ownedContainer(id)).remove({ force: true, v: false })
+  for (const c of await environmentContainers(id)) await c.remove({ force: true, v: false })
   states.delete(id)
 }
 export function logs(id: string): string {
@@ -628,4 +621,13 @@ export async function stats(id: string): Promise<string> {
     null,
     2,
   )
+}
+
+export function hasActiveRuntimeOperations(): boolean {
+  return busy.size > 0 || sessions.size > 0
+}
+
+export function resetEngineState(): void {
+  states.clear()
+  remoteEnvironments.clear()
 }

@@ -4,7 +4,7 @@
 
 ## Requirements
 
-Use Node.js 22.16+ and npm to develop the app. Install Docker Engine on Linux or Docker Desktop using Linux containers on Windows/macOS. Install Git and GitHub CLI for repository actions. Authenticate with `gh auth login` or the application’s GitHub sign-in button. Keep your normal Git credential helper or SSH setup for private clones.
+Use Node.js 22.16+ and npm to develop the app. Install Docker Engine/Desktop or Podman. Podman requires an active API socket on Linux or a running Podman Machine on macOS/Windows. Install Git and GitHub CLI for repository actions. Authenticate with `gh auth login` or the application’s GitHub sign-in button. Keep your normal Git credential helper or SSH setup for private clones.
 
 Run `npm ci`, then `npm run dev`. No global Dev Containers CLI is needed. Monaco workers and fonts are served locally.
 
@@ -38,7 +38,7 @@ Terminal opens a shell using the effective user and workspace, preferring the co
 
 Custom checks run sequentially after startup/inspection, with name, command, working directory, timeout and expected exit code. First failure stops the sequence. Export a JSON report from Tests. Cancellation ends the coordinating process; check for remaining resources. Test process-group cancellation is best-effort when the image lacks `setsid`.
 
-Stop preserves the managed container. Remove requires confirmation and preserves named volumes and images. Other projects’ containers are not removed.
+Stop preserves managed containers, including associated Compose services. Remove requires confirmation and preserves named volumes and images. Other projects’ containers are not removed.
 
 ## ZIP export
 
@@ -52,6 +52,66 @@ GitHub Actions runs only on macOS, building Intel and Apple Silicon artifacts on
 
 ## Troubleshooting
 
-Use Settings → Check tools & Docker. An empty Docker endpoint follows `DOCKER_HOST` or the current Docker context. Unix/rootless sockets and Windows named pipes are supported; SSH/TCP remote endpoints are not. On Linux, obtain normal user access to your Docker/rootless socket; the app never changes its permissions. On Windows, select Linux containers in Docker Desktop and use host-accessible paths. On macOS, use the active Docker Desktop context.
+Use Settings → Check tools & engine. Choose Docker or Podman. An empty endpoint discovers that engine; Docker follows `DOCKER_HOST` or its current context. Podman follows `CONTAINER_HOST`, its rootless Linux socket, or the active machine socket. Unix sockets, Windows named pipes, TCP/TLS and SSH forwarding are supported. On Linux, obtain normal user access to your Docker/rootless socket; the app never changes its permissions. On Windows, select Linux containers in Docker Desktop and use host-accessible paths. On macOS, use the active Docker Desktop context.
 
-Docker Hub network failures or rate limits can be bypassed with a manual image reference. Arbitrary registries are accepted as references; browsing tags is limited to Docker Hub. Compose is source-only. See TODO for planned capabilities.
+Docker Hub network failures or rate limits can be bypassed with a manual image reference. Arbitrary registries are accepted as references; browsing tags is limited to Docker Hub. Compose is editable in its own tab. See TODO for release verification.
+
+## Themes
+
+Select **Settings → Color theme**, then Save settings. The selected palette applies to the workbench, Monaco source/diff editors and active terminals without disconnecting a shell. Preferences survive restart. Options include Dark/Light Modern, Dark+/Light+, high contrast, Monokai, Solarized, Abyss, Quiet Light, Kimbie Dark and Red. These are built-in workbench palette adaptations; installing arbitrary VS Code theme extensions is not supported.
+
+## Podman and remote engines
+
+On Linux, enable the rootless API with `systemctl --user start podman.socket`. Its usual endpoint is `unix:///run/user/UID/podman/podman.sock`. Choose Podman in Settings, save and check diagnostics. Use fully qualified image names such as `docker.io/library/alpine:3.22`. Review SELinux labels and bind-mount permissions; a volume workspace avoids changing labels on source folders. Features that require privileged containers or Docker-specific behavior can have additional rootless limitations. For Compose, install a compatible Compose provider and set its executable path if needed.
+
+For SSH, enter `ssh://user@host:port` and the remote socket path (for example `/run/user/1000/podman/podman.sock`). OpenSSH forwards it to a private local socket, shared by the CLI and Dockerode. Authentication uses your SSH agent/config and existing `known_hosts`; the app never accepts unknown host keys automatically. Linux/macOS hosts support this forwarding; on Windows use a TLS endpoint. For TLS, select a certificate directory containing `ca.pem`, `cert.pem`, and `key.pem`. Engine credentials and certificates stay outside project exports. TCP endpoints without TLS should only be used on trusted, locally protected connections.
+
+Bind paths refer to the engine host, including remote engines. Local sources are not uploaded automatically. Use a remote volume workspace or map existing remote paths. Finish runtime operations and disconnect shell/log sessions before changing engine connections.
+
+## Compose and nested engines
+
+Open **Compose** to convert an image/Dockerfile project or edit existing Compose files. Select services, edit image/build/ports/volumes/environment/dependencies, add services and select the development service. YAML source remains editable. Untouched imported YAML remains byte-for-byte identical; visual changes retain comments and unknown fields while YAML formatting may normalize. Multiple override files follow Compose path semantics. Save reviews include all changed YAML files and reject external modifications.
+
+The CLI starts the environment; Stop also stops services carrying the same Compose project and configuration labels. Remove preserves volumes/images. Compose networks can remain for reuse. Build contexts and referenced env/config/secret files require review before ZIP export.
+
+For a separate privileged Docker daemon, select the official **Docker in Docker** Feature. For host-engine access, use the Docker outside of Docker Feature or the socket assistant in Environment; do not add duplicate socket mounts. Podman host sockets can be mapped to `/var/run/docker.sock` for compatible tools. Container user permissions and SELinux policy still apply.
+
+## Registry, OCI, Features and security tools
+
+Settings provides registry sign-in via password stdin to the selected engine. The app never stores passwords in project files. Docker uses its normal credential helper/config; Podman writes the Docker-compatible auth file so the bundled CLI can authenticate OCI requests. Signing out removes that registry login from the selected store.
+
+Create from an OCI template in Settings: enter the reference/options and choose an empty destination. The official CLI applies it in staging first, then copies allowed files and opens the result. Excluded credentials/Git metadata and symlinks are not copied. Applying a template does not execute lifecycle hooks. Review generated files before startup.
+
+Features can query published versions, stage a reference replacement while preserving options, and preview/save an updated lockfile. Save project edits before generating a lockfile; external lockfile changes invalidate the preview. Source offers comparison with another configuration.
+
+Environment can add `${localEnv:NAME}` secret references and mount an SSH agent socket. Actual secret values and private keys should stay on the host. Agent and engine socket forwarding grant the container access to those host services.
+
+Install [Trivy](https://trivy.dev/docs/latest/) on the host to export a CycloneDX SBOM or a JSON vulnerability report from Security. These reports scan **project filesystem dependencies on disk**, not the built image. Trivy may download its databases; scan cancellation is available in the output panel. Reports are saved only to the selected destination.
+
+## Volume repositories and backups
+
+Ports & volumes offers backup of stopped volumes as TAR and restoration into a **new** volume. Backups contain all files, including any secrets present. Restoration accepts regular files/directories under `data/` and rejects links/devices/traversal; archives with those entries require a separate manual migration. Restore validates a private snapshot before creating the new volume. Interrupted restores preserve partial data in that new volume. Existing volumes are never overwritten or automatically removed.
+
+Public HTTPS repositories can be cloned into a new volume at `/data/repository`, then selected as the workspace. Private repository cloning remains available on the host through GitHub CLI. Cloning uses an Alpine helper with Git and downloads its required packages. Review network availability and the selected branch. ZIP export continues to exclude volume data; use TAR separately.
+
+## Generated standalone scripts
+
+New wizard/OCI projects include these files at the **project root**, next to `.devcontainer`:
+
+- `devcontainer-start.sh` / `devcontainer-start.ps1`
+- `devcontainer-stop.sh` / `devcontainer-stop.ps1`
+- `devcontainer-shell.sh` / `devcontainer-shell.ps1`
+
+Existing projects can add missing scripts in Repository. Existing script contents are never overwritten. Install Node.js and `npm install -g @devcontainers/cli`, then run `./devcontainer-start.sh`, `./devcontainer-shell.sh` and `./devcontainer-stop.sh`. Shell defaults to `/bin/sh`; pass `/bin/bash` or another command as arguments. PowerShell scripts require PowerShell 7+. Additional startup CLI flags are accepted by the start script.
+
+`DCB_ENGINE=docker|podman` overrides the generated engine default. Configured endpoint, TLS-directory and Compose-executable defaults are included when scripts are generated; environment variables override them. Remap these machine-specific paths after moving a project. Configure `DOCKER_HOST`/`CONTAINER_HOST` and TLS/SSH authentication as needed. Scripts locate their project directory independently of the current working directory and use the same project ownership label as the app. Starting runs the configured lifecycle hooks; stopping preserves persistent data. Scripts are selected by default during ZIP export.
+
+## Application updates and release artifacts
+
+Packaged applications can check published GitHub Releases; enable automatic checks in Settings or use Check updates. Downloads and restart/install are explicit actions. For this private repository, launch with `GH_TOKEN` or `GITHUB_TOKEN` that can read releases. No token is stored in project settings or bundled into update metadata. A development `npm run dev` session cannot update itself.
+
+Local packaging never publishes a release. macOS produces DMG and ZIP plus update metadata; publish compatible signed artifacts/metadata manually after review. Automatic checking is off by default. Full end-to-end delivery requires a published release and signing/notarization on the target platform. Platform installers and release credentials still need the verification listed in TODO.
+
+Compose execution uses `COMPOSE_BAKE=false` on providers that support it and `BUILDX_BAKE_ENTITLEMENTS_FS=0` for compatibility with recent Bake versions: the official CLI generates Feature Dockerfiles outside the original build context. Start/Tests and standalone helper scripts therefore run as trusted build operations with host filesystem access; review imported Dockerfiles, Compose files and lifecycle hooks first.
+
+POSIX helpers include `.devcontainer/builder-podman.sh` to replay Podman startup events from the beginning of the CLI operation. Keep this support file with the root scripts when exporting. PowerShell uses the native Podman executable; Podman Machine and its native event behavior still require Windows validation.

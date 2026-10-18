@@ -16,14 +16,26 @@ async function findApp(root) {
   }
 }
 const executable =
-  process.argv[2] || (process.platform === 'darwin' ? await findApp('release') : undefined)
+  process.argv[2] ||
+  (process.platform === 'darwin'
+    ? await findApp('release')
+    : process.platform === 'win32'
+      ? 'release/win-unpacked/DevContainer Builder.exe'
+      : 'release/linux-unpacked/devcontainer-builder')
 if (!executable)
   throw new Error('Usage: npm run verify:package -- /absolute/path/to/packaged/executable')
 const data = await fs.mkdtemp(path.join(os.tmpdir(), 'dcb-packaged-'))
 const application = await electron.launch({
   executablePath: path.resolve(executable),
   args: [],
-  env: { ...process.env, ELECTRON_RUN_AS_NODE: undefined, DCB_E2E: '1', DCB_E2E_USER_DATA: data },
+  env: {
+    ...process.env,
+    GH_TOKEN: '',
+    GITHUB_TOKEN: '',
+    ELECTRON_RUN_AS_NODE: undefined,
+    DCB_E2E: '1',
+    DCB_E2E_USER_DATA: data,
+  },
 })
 try {
   const window = await application.firstWindow()
@@ -60,6 +72,16 @@ try {
   )
   assert.equal(result.code, 0, result.output)
   assert.match(result.output, /\d+\.\d+\.\d+/)
+  const updater = await window.evaluate(async () => {
+    try {
+      await window.builder.maintenance.update('check')
+      return 'Unexpected network check'
+    } catch (error) {
+      return String(error)
+    }
+  })
+  assert.match(updater, /requires GH_TOKEN or GITHUB_TOKEN/, updater)
+  console.log(`PASS: packaged updater loads and requires explicit private-release credentials`)
   console.log(`PASS: packaged window and CLI ${result.output.trim()}`)
 } finally {
   await application.close()

@@ -5,7 +5,24 @@ const invoke = <T>(channel: string, value?: unknown): Promise<T> =>
   ipcRenderer.invoke(channel, value)
 const api: BuilderAPI = {
   settings: { get: () => invoke('settings:get'), save: (value) => invoke('settings:save', value) },
+  maintenance: {
+    registryLogin: (server, username, password) =>
+      invoke('maintenance:registryLogin', { server, username, password }),
+    registryLogout: (server) => invoke('maintenance:registryLogout', server),
+    applyTemplate: (reference, options) =>
+      invoke('maintenance:applyTemplate', { reference, options }),
+    featureVersions: (id) => invoke('maintenance:featureVersions', id),
+    featureLock: (id) => invoke('maintenance:featureLock', id),
+    saveFeatureLock: (id, content) => invoke('maintenance:saveFeatureLock', { id, content }),
+    compare: () => invoke('maintenance:compare'),
+    cloneVolume: (name, url, branch) => invoke('maintenance:cloneVolume', { name, url, branch }),
+    backupVolume: (name) => invoke('maintenance:backupVolume', name),
+    restoreVolume: (name) => invoke('maintenance:restoreVolume', name),
+    scan: (id, kind) => invoke('maintenance:scan', { id, kind }),
+    update: (action) => invoke('maintenance:update', action),
+  },
   projects: {
+    scripts: (id) => invoke('projects:scripts', id),
     pickDirectory: () => invoke('projects:pickDirectory'),
     open: () => invoke('projects:open'),
     openRecent: (root) => invoke('projects:openRecent', root),
@@ -17,7 +34,7 @@ const api: BuilderAPI = {
   },
   system: {
     capabilities: () => invoke('system:capabilities'),
-    contexts: () => invoke('system:contexts'),
+    contexts: (engine) => invoke('system:contexts', engine),
   },
   git: {
     info: (id) => invoke('git:info', id),

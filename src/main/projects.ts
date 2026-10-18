@@ -1,13 +1,16 @@
 // SPDX-License-Identifier: MPL-2.0
+import { parseDocument } from 'yaml'
 import { dialog } from 'electron'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { createConfig, readConfig, validateConfig } from '../shared/config'
+import { composeReferences } from '../shared/compose'
 import { inside, exclusionReason } from '../shared/paths'
 import type { Auxiliary, Project, WizardData } from '../shared/types'
 import { run, tracked, type Operation } from './operations'
-import { remember } from './settings'
+import { remember, getSettings } from './settings'
+import { helperScripts } from '../shared/helpers'
 
 const projects = new Map<string, Project>()
 const selectedDirectories = new Set<string>()
@@ -100,6 +103,7 @@ export async function loadProject(
   root: string,
   configFile?: string,
   id?: string,
+  recordRecent = true,
 ): Promise<Project> {
   root = await fs.realpath(root)
   let configPath = configFile
@@ -121,11 +125,20 @@ export async function loadProject(
   const configText = await fs.readFile(configFull, 'utf8')
   const { config, errors } = readConfig(configText)
   const previous = id ? projects.get(id) : undefined
+  const composeFiles: Record<string, string> = {}
+  for (const ref of errors.length
+    ? Object.keys(previous?.composeFiles ?? {}).map((f) =>
+        path.relative(path.dirname(configFull), path.join(root, f)),
+      )
+    : safeComposeReferences(config)) {
+    const full = await checkedPath(root, path.resolve(path.dirname(configFull), ref), true)
+    composeFiles[path.relative(root, full).split(path.sep).join('/')] = await readOptional(full)
+  }
   const build =
     config.build && typeof config.build === 'object'
       ? (config.build as Record<string, unknown>)
       : {}
-  const dockerfileReference =
+  let dockerfileReference =
     errors.length && previous?.dockerfilePath
       ? path.relative(path.dirname(configFull), path.resolve(root, previous.dockerfilePath))
       : typeof build.dockerfile === 'string'
@@ -133,6 +146,10 @@ export async function loadProject(
         : typeof config.dockerFile === 'string'
           ? config.dockerFile
           : undefined
+  if (!dockerfileReference && !errors.length) {
+    const full = composeDockerfile(root, configFull, config, composeFiles)
+    if (full) dockerfileReference = path.relative(path.dirname(configFull), full)
+  }
   let dockerfilePath: string | undefined
   let dockerfile = ''
   if (dockerfileReference) {
@@ -162,11 +179,12 @@ export async function loadProject(
     configText,
     dockerfile,
     auxiliary,
+    composeFiles,
     files: await listFiles(root),
-    baseline: { configText, dockerfile, auxiliaryText },
+    baseline: { configText, dockerfile, auxiliaryText, composeFiles: { ...composeFiles } },
   }
   projects.set(p.id, p)
-  await remember(root)
+  if (recordRecent) await remember(root)
   return p
 }
 export async function openProject(): Promise<Project | null> {
@@ -196,6 +214,8 @@ export async function hasChanged(id: string): Promise<boolean> {
   const aux = await readOptional(
     await checkedPath(p.root, path.join(path.dirname(p.configPath), 'builder.json'), true),
   )
+  for (const [relative, source] of Object.entries(p.baseline.composeFiles ?? {}))
+    if ((await readOptional(await checkedPath(p.root, relative, true))) !== source) return true
   return (
     config !== p.baseline.configText ||
     dockerfile !== p.baseline.dockerfile ||
@@ -230,12 +250,21 @@ export async function saveProject(incoming: Project): Promise<Project> {
     config.build && typeof config.build === 'object'
       ? (config.build as Record<string, unknown>)
       : {}
-  const ref =
+  let ref =
     typeof build.dockerfile === 'string'
       ? build.dockerfile
       : typeof config.dockerFile === 'string'
         ? config.dockerFile
         : undefined
+  if (!ref && !errors.length) {
+    const full = composeDockerfile(
+      p.root,
+      path.join(p.root, p.configPath),
+      config,
+      incoming.composeFiles ?? {},
+    )
+    if (full) ref = path.relative(path.dirname(path.join(p.root, p.configPath)), full)
+  }
   const dockerfilePath = errors.length
     ? p.dockerfilePath
     : ref
@@ -260,9 +289,32 @@ export async function saveProject(incoming: Project): Promise<Project> {
     ],
   ]
   if (dockerfilePath) writes.push([dockerfilePath, incoming.dockerfile])
+  const composePaths = errors.length
+    ? Object.keys(p.composeFiles ?? {})
+    : safeComposeReferences(config).map((ref) =>
+        path
+          .relative(p.root, path.resolve(p.root, path.dirname(p.configPath), ref))
+          .split(path.sep)
+          .join('/'),
+      )
+  for (const file of composePaths) {
+    const target = await checkedPath(p.root, file, true)
+    if (!(file in (p.composeFiles ?? {})) && (await exists(target)))
+      throw new Error(
+        'The Compose file already exists. Reopen the configuration before editing it.',
+      )
+    const content = incoming.composeFiles?.[file]
+    if (content === undefined)
+      throw new Error('Load or create the referenced Compose file before saving: ' + file)
+    writes.push([file, content])
+  }
   const targets = await Promise.all(
     writes.map(async ([file, text]) => ({ file: await checkedPath(p.root, file, true), text })),
   )
+  if (new Set(targets.map((t) => t.file)).size !== targets.length)
+    throw new Error(
+      'Configuration, Dockerfile, builder metadata and Compose files must use separate paths.',
+    )
   const applied: { file: string; text: string; existed: boolean }[] = []
   try {
     for (const { file, text } of targets) {
@@ -300,6 +352,7 @@ export async function saveAs(p: Project): Promise<Project | null> {
     configText: p.configText,
     dockerfile: p.dockerfile,
     auxiliary: p.auxiliary,
+    composeFiles: p.composeFiles,
   })
 }
 export async function createProject(data: WizardData): Promise<Project> {
@@ -331,7 +384,11 @@ async function createProjectInternal(data: WizardData, op: Operation): Promise<P
     if (data.branch) args.push('--', '--branch', data.branch)
     await run('gh', ['repo', ...args], { output, signal: op.signal, timeout: 600000 })
     await checkedPath(root, configFull, true)
-    if ((await configurations(root)).length) return loadProject(root)
+    if ((await configurations(root)).length) {
+      const p = await loadProject(root)
+      await createHelperScripts(p.id)
+      return loadProject(root, p.configPath, p.id)
+    }
   }
   if (data.repository === 'local' || data.repository === 'github') {
     const existing = await run('git', ['rev-parse', '--show-toplevel'], {
@@ -394,5 +451,74 @@ async function createProjectInternal(data: WizardData, op: Operation): Promise<P
   const ignore = await checkedPath(root, '.dockerignore', true)
   if (!(await exists(ignore)))
     await atomicWrite(ignore, '.git\nnode_modules\n.env\n.env.*\n!.env.example\n*.pem\n*.key\n')
-  return loadProject(root)
+  const created = await loadProject(root)
+  await createHelperScripts(created.id)
+  return loadProject(root, created.configPath, created.id)
+}
+
+export async function createHelperScripts(id: string): Promise<string[]> {
+  const p = projectFor(id)
+  const settings = await getSettings()
+  const scripts = helperScripts(p.configPath, settings.engine || 'docker', settings)
+  const created: string[] = []
+  for (const script of scripts) {
+    const file = await checkedPath(p.root, script.name, true)
+    await fs.mkdir(path.dirname(file), { recursive: true })
+    try {
+      await fs.writeFile(file, script.text, { flag: 'wx', mode: script.mode })
+      created.push(script.name)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+    }
+  }
+  p.files = await listFiles(p.root)
+  return created
+}
+
+function composeDockerfile(
+  root: string,
+  configFull: string,
+  config: Record<string, unknown>,
+  files: Record<string, string>,
+): string | undefined {
+  const refs = safeComposeReferences(config)
+  if (!refs.length || typeof config.service !== 'string') return undefined
+  const firstDirectory = path.dirname(path.resolve(path.dirname(configFull), refs[0]))
+  let build: unknown
+  for (const ref of refs) {
+    const filename = path
+      .relative(root, path.resolve(path.dirname(configFull), ref))
+      .split(path.sep)
+      .join('/')
+    const doc = parseDocument(files[filename] ?? '')
+    if (doc.errors.length) continue
+    const service = doc.toJS()?.services?.[config.service]
+    if (service?.build !== undefined)
+      build =
+        typeof service.build === 'object' && typeof build === 'object'
+          ? { ...build, ...service.build }
+          : service.build
+  }
+  if (!build) return undefined
+  if (typeof build === 'string') return path.resolve(firstDirectory, build, 'Dockerfile')
+  if (typeof build !== 'object') return undefined
+  const b = build as Record<string, unknown>
+  if (
+    b.dockerfile_inline ||
+    (typeof b.context === 'string' && /^(https?:|git@|service:)/.test(b.context))
+  )
+    return undefined
+  return path.resolve(
+    firstDirectory,
+    String(b.context ?? '.'),
+    String(b.dockerfile ?? 'Dockerfile'),
+  )
+}
+
+function safeComposeReferences(config: Record<string, unknown>): string[] {
+  try {
+    return composeReferences(config)
+  } catch {
+    return []
+  }
 }

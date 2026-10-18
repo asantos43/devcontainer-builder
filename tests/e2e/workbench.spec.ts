@@ -32,10 +32,12 @@ test.beforeEach(async () => {
         ...process.env,
         DCB_E2E_USER_DATA: path.join(root, 'settings'),
         DCB_E2E: '1',
+        DOCKER_CONFIG: path.join(root, 'engine-auth'),
       }).filter(([key, value]) => key !== 'ELECTRON_RUN_AS_NODE' && typeof value === 'string'),
     ) as Record<string, string>,
   })
   page = await application.firstWindow()
+  page.on('pageerror', (error) => console.error('Renderer error:', error.stack))
   await page.waitForLoadState('domcontentloaded')
   await application.evaluate(({ dialog }, directory) => {
     dialog.showOpenDialog = (async () => ({
@@ -314,4 +316,555 @@ test('private GitHub repository clones into an approved host workspace', async (
   expect(await fs.readFile(path.join(destination, '.git/config'), 'utf8')).toContain(
     process.env.DCB_GITHUB_E2E_REPO!,
   )
+})
+
+test('theme selection updates the workbench, editor and terminal and survives reload', async () => {
+  await page.getByRole('button', { name: 'Configurações', exact: true }).click()
+  await page
+    .getByRole('combobox', { name: 'Tema visual', exact: true })
+    .selectOption('light-modern')
+  await page.getByRole('button', { name: 'Salvar configurações', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light-modern')
+  expect(
+    await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--background').trim(),
+    ),
+  ).toBe('#ffffff')
+  await page.reload()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light-modern')
+  const destination = path.join(root, 'theme-project')
+  await fs.mkdir(destination)
+  await application.evaluate(({ dialog }, directory) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [directory],
+    })) as typeof dialog.showOpenDialog
+  }, destination)
+  await page.evaluate(
+    async (data) => {
+      data.root = (await window.builder.projects.pickDirectory()) ?? ''
+      await window.builder.projects.create(data)
+    },
+    { ...wizardDefaults(), root: destination, repository: 'none' as const, image: 'alpine:3.22' },
+  )
+  await page.getByRole('button', { name: 'Abrir dev container', exact: true }).click()
+  await page.getByRole('button', { name: 'Código', exact: true }).click()
+  await expect(page.locator('.monaco-editor').first()).toHaveCSS(
+    'background-color',
+    'rgb(255, 255, 255)',
+  )
+  await expect(page.locator('.xterm-viewport').first()).toHaveCSS(
+    'background-color',
+    'rgb(255, 255, 255)',
+  )
+  await page.getByRole('button', { name: 'Configurações', exact: true }).click()
+  await page
+    .getByRole('combobox', { name: 'Tema visual', exact: true })
+    .selectOption('high-contrast')
+  await page.getByRole('button', { name: 'Salvar configurações', exact: true }).click()
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'high-contrast')
+  await expect(page.locator('.xterm-viewport').first()).toHaveCSS(
+    'background-color',
+    'rgb(0, 0, 0)',
+  )
+})
+
+test('Compose visual changes retain comments and save alongside helper scripts', async () => {
+  const destination = path.join(root, 'compose-edit')
+  await fs.mkdir(path.join(destination, '.devcontainer'), { recursive: true })
+  const yaml =
+    '# production deployment\nservices:\n  app:\n    image: alpine:3.22 # pinned\n    command: sleep infinity\n'
+  await fs.writeFile(
+    path.join(destination, '.devcontainer/devcontainer.json'),
+    '{"dockerComposeFile":"compose.yaml","service":"app","workspaceFolder":"/workspace"}',
+  )
+  await fs.writeFile(path.join(destination, '.devcontainer/compose.yaml'), yaml)
+  await application.evaluate(({ dialog }, directory) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [directory],
+    })) as typeof dialog.showOpenDialog
+  }, destination)
+  await page.getByRole('button', { name: 'Abrir dev container', exact: true }).click()
+  await page.getByRole('button', { name: 'Compose', exact: true }).click()
+  await page.getByLabel('Imagem do serviço', { exact: true }).fill('alpine:3.23')
+  await page.keyboard.press('ControlOrMeta+s')
+  await expect(page.getByRole('dialog')).toBeVisible()
+  await page.getByRole('button', { name: 'Salvar alterações revisadas', exact: true }).click()
+  await expect(page.getByRole('dialog')).toHaveCount(0)
+  const saved = await fs.readFile(path.join(destination, '.devcontainer/compose.yaml'), 'utf8')
+  expect(saved).toContain('# production deployment')
+  expect(saved).toContain('# pinned')
+  expect(saved).toContain('alpine:3.23')
+  await page.getByRole('button', { name: 'Repositório', exact: true }).click()
+  await page
+    .getByRole('button', { name: 'Criar scripts de start/stop/shell ausentes', exact: true })
+    .click()
+  await expect
+    .poll(
+      async () =>
+        (await fs.readdir(destination)).filter((f) => f.startsWith('devcontainer-')).length,
+    )
+    .toBe(6)
+})
+
+for (const engine of ['docker', 'podman'] as const) {
+  test(`${engine}: generated scripts, API shell and volume backup/restore`, async () => {
+    test.skip(
+      process.env[engine === 'docker' ? 'DCB_DOCKER_E2E' : 'DCB_PODMAN_E2E'] !== '1',
+      'Opt into a local engine integration.',
+    )
+    test.setTimeout(240000)
+    const { execFile } = await import('node:child_process')
+    const { promisify } = await import('node:util')
+    const execute = promisify(execFile)
+    const socket =
+      engine === 'docker'
+        ? process.env.DOCKER_HOST || 'unix:///var/run/docker.sock'
+        : process.env.DCB_PODMAN_SOCKET ||
+          `unix://${process.env.XDG_RUNTIME_DIR || `/run/user/${process.getuid?.()}`}/podman/podman.sock`
+    const client = new Docker({ socketPath: socket.slice(7) })
+    const destination = path.join(root, 'script-workspace')
+    await fs.mkdir(destination)
+    const suffix = path.basename(root).toLowerCase()
+    const volume = 'dcb-' + suffix
+    const restoredVolume = volume + '-restored'
+    let containerId = ''
+    try {
+      await application.evaluate(({ dialog }, directory) => {
+        dialog.showOpenDialog = (async () => ({
+          canceled: false,
+          filePaths: [directory],
+        })) as typeof dialog.showOpenDialog
+      }, destination)
+      await page.evaluate(
+        async ({ engine, socket, data }) => {
+          const settings = await window.builder.settings.get()
+          await window.builder.settings.save({ ...settings, engine, dockerEndpoint: socket })
+          data.root = (await window.builder.projects.pickDirectory()) ?? ''
+          await window.builder.projects.create(data)
+        },
+        {
+          engine,
+          socket,
+          data: {
+            ...wizardDefaults(),
+            root: destination,
+            repository: 'none' as const,
+            image: 'docker.io/library/alpine:3.22',
+            remoteUser: 'root',
+            workspaceFolder: '/workspace',
+          },
+        },
+      )
+      // Use a volume workspace to work with rootless engines and SELinux without relabeling host directories.
+      await fs.writeFile(
+        path.join(destination, '.devcontainer/devcontainer.json'),
+        JSON.stringify({
+          image: 'docker.io/library/alpine:3.22',
+          workspaceMount: `type=volume,source=${volume},target=/workspace`,
+          workspaceFolder: '/workspace',
+          remoteUser: 'root',
+          postCreateCommand: 'printf backup-ready > /workspace/ready.txt',
+        }),
+      )
+      const env = {
+        ...process.env,
+        PATH: path.join(process.cwd(), 'node_modules/.bin') + path.delimiter + process.env.PATH,
+        DCB_ENGINE: engine,
+        DOCKER_HOST: socket,
+        CONTAINER_HOST: engine === 'podman' ? socket : '',
+      }
+      await execute('sh', [path.join(destination, 'devcontainer-start.sh')], {
+        env,
+        timeout: 180000,
+        maxBuffer: 4_000_000,
+      })
+      await page.getByRole('button', { name: 'Abrir dev container', exact: true }).click()
+      const state = await page.evaluate(async () => {
+        const s = await window.builder.settings.get()
+        const p = await window.builder.projects.openRecent(s.recent[0])
+        return { p, state: await window.builder.runtime.state(p.id) }
+      })
+      containerId = state.state.containerId ?? ''
+      expect(containerId).toBeTruthy()
+      const command = await execute(
+        'sh',
+        [
+          path.join(destination, 'devcontainer-shell.sh'),
+          '/bin/sh',
+          '-c',
+          'cat /workspace/ready.txt',
+        ],
+        { env, timeout: 30000 },
+      )
+      expect(command.stdout).toContain('backup-ready')
+      await page.evaluate(async (id) => {
+        window.dcbEvents = []
+        window.builder.onEvent((e) => window.dcbEvents.push(e.text))
+        const session = await window.builder.terminal.open(id)
+        await window.builder.terminal.write(session, 'printf terminal-ready\\n\n')
+      }, state.p.id)
+      await expect
+        .poll(() => page.evaluate(() => window.dcbEvents.join('')))
+        .toContain('terminal-ready')
+      await page.evaluate(async (id) => window.builder.runtime.stop(id), state.p.id)
+      expect((await client.getContainer(containerId).inspect()).State.Running).toBe(false)
+      const archive = path.join(root, 'volume.tar')
+      await application.evaluate(({ dialog }, file) => {
+        dialog.showSaveDialog = (async () => ({
+          canceled: false,
+          filePath: file,
+        })) as typeof dialog.showSaveDialog
+      }, archive)
+      expect(
+        await page.evaluate((name) => window.builder.maintenance.backupVolume(name), volume),
+      ).toBe(archive)
+      await application.evaluate(({ dialog }, file) => {
+        dialog.showOpenDialog = (async () => ({
+          canceled: false,
+          filePaths: [file],
+        })) as typeof dialog.showOpenDialog
+      }, archive)
+      expect(
+        await page.evaluate(
+          (name) => window.builder.maintenance.restoreVolume(name),
+          restoredVolume,
+        ),
+      ).toBe(restoredVolume)
+      const verify = await client.createContainer({
+        Image: 'alpine:3.22',
+        Cmd: ['cat', '/data/ready.txt'],
+        HostConfig: { Mounts: [{ Type: 'volume', Source: restoredVolume, Target: '/data' }] },
+      })
+      try {
+        await verify.start()
+        expect((await verify.wait()).StatusCode).toBe(0)
+        expect((await verify.logs({ stdout: true })).toString()).toContain('backup-ready')
+      } finally {
+        await verify.remove({ force: true })
+      }
+      const restart = await page.evaluate(async (id) => {
+        window.dcbEvents = []
+        window.builder.onEvent((e) => window.dcbEvents.push(e.id + ':' + e.kind + ':' + e.text))
+        return window.builder.runtime.start(id)
+      }, state.p.id)
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              (id) =>
+                window.dcbEvents.find(
+                  (e) => e.startsWith(id + ':done:') || e.startsWith(id + ':error:'),
+                ) || '',
+              restart,
+            ),
+          { timeout: 60000 },
+        )
+        .toContain(':done:')
+      await execute('sh', [path.join(destination, 'devcontainer-stop.sh')], { env, timeout: 30000 })
+      expect((await client.getContainer(containerId).inspect()).State.Running).toBe(false)
+    } finally {
+      const containers = await client.listContainers({
+        all: true,
+        filters: JSON.stringify({ volume: [volume] }),
+      })
+      for (const c of containers) await client.getContainer(c.Id).remove({ force: true, v: false })
+      for (const name of [volume, restoredVolume])
+        await client
+          .getVolume(name)
+          .remove()
+          .catch(() => {})
+    }
+  })
+}
+
+test('Compose builds the development service and stops its associated services', async () => {
+  test.skip(process.env.DCB_DOCKER_E2E !== '1', 'Opt into Docker integration.')
+  test.setTimeout(180000)
+  const destination = path.join(root, 'compose-runtime')
+  await fs.mkdir(path.join(destination, '.devcontainer'), { recursive: true })
+  const volume = 'dcb-compose-' + path.basename(root).toLowerCase()
+  await fs.writeFile(
+    path.join(destination, '.devcontainer/devcontainer.json'),
+    JSON.stringify({
+      dockerComposeFile: 'compose.yaml',
+      service: 'app',
+      workspaceFolder: '/workspace',
+      remoteUser: 'root',
+    }),
+  )
+  await fs.writeFile(
+    path.join(destination, '.devcontainer/Dockerfile'),
+    '# compose build\nFROM alpine:3.22\nRUN echo compose-built > /built\n',
+  )
+  await fs.writeFile(
+    path.join(destination, '.devcontainer/compose.yaml'),
+    `services:\n  app:\n    build:\n      context: ..\n      dockerfile: .devcontainer/Dockerfile\n    command: sleep infinity\n    volumes:\n      - workspace:/workspace\n    depends_on:\n      - cache\n  cache:\n    image: alpine:3.22\n    command: sleep infinity\nvolumes:\n  workspace:\n    name: ${volume}\n`,
+  )
+  const client = new Docker()
+  let composeProject = ''
+  try {
+    await application.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = (async () => ({
+        canceled: false,
+        filePaths: [directory],
+      })) as typeof dialog.showOpenDialog
+    }, destination)
+    const p = await page.evaluate(async () => {
+      const p = await window.builder.projects.open()
+      if (!p) throw new Error('Missing fixture')
+      window.dcbEvents = []
+      window.builder.onEvent((e) => window.dcbEvents.push(e.id + ':' + e.kind + ':' + e.text))
+      return p
+    })
+    const operation = await page.evaluate((id) => window.builder.runtime.start(id), p.id)
+    await expect
+      .poll(
+        () =>
+          page.evaluate(
+            (id) =>
+              window.dcbEvents.find(
+                (e) => e.startsWith(id + ':done:') || e.startsWith(id + ':error:'),
+              ) || '',
+            operation,
+          ),
+        { timeout: 120000 },
+      )
+      .toContain(':done:')
+    const state = await page.evaluate((id) => window.builder.runtime.state(id), p.id)
+    expect(state.status).toBe('running')
+    const info = await client.getContainer(state.containerId!).inspect()
+    composeProject = info.Config.Labels['com.docker.compose.project']
+    const services = await client.listContainers({
+      filters: JSON.stringify({ label: [`com.docker.compose.project=${composeProject}`] }),
+    })
+    expect(services).toHaveLength(2)
+    await page.evaluate((id) => window.builder.runtime.stop(id), p.id)
+    expect(
+      await client.listContainers({
+        filters: JSON.stringify({ label: [`com.docker.compose.project=${composeProject}`] }),
+      }),
+    ).toHaveLength(0)
+  } finally {
+    if (composeProject) {
+      for (const c of await client.listContainers({
+        all: true,
+        filters: JSON.stringify({ label: [`com.docker.compose.project=${composeProject}`] }),
+      }))
+        await client.getContainer(c.Id).remove({ force: true, v: false })
+      for (const n of await client.listNetworks({
+        filters: JSON.stringify({ label: [`com.docker.compose.project=${composeProject}`] }),
+      }))
+        await client.getNetwork(n.Id).remove()
+    }
+    await client
+      .getVolume(volume)
+      .remove()
+      .catch(() => {})
+  }
+})
+
+test('creates a private GitHub test remote, commits selected files and pushes', async () => {
+  test.skip(
+    process.env.DCB_GITHUB_CREATE_E2E !== '1',
+    'Opt into disposable private GitHub repository creation and cleanup.',
+  )
+  test.setTimeout(120000)
+  const { execFile } = await import('node:child_process')
+  const { promisify } = await import('node:util')
+  const execute = promisify(execFile)
+  const destination = path.join(root, 'github-create')
+  await fs.mkdir(destination)
+  const owner = (await execute('gh', ['api', 'user', '--jq', '.login'])).stdout.trim()
+  const permissions = await execute('gh', ['api', '--include', 'user'])
+  test.skip(
+    !/^x-oauth-scopes:.*delete_repo/im.test(permissions.stdout),
+    'OAuth token needs delete_repo scope for disposable repository cleanup.',
+  )
+  const name = 'dcb-validation-' + path.basename(root).toLowerCase()
+  let created = false
+  try {
+    await application.evaluate(({ dialog }, directory) => {
+      dialog.showOpenDialog = (async () => ({
+        canceled: false,
+        filePaths: [directory],
+      })) as typeof dialog.showOpenDialog
+    }, destination)
+    const p = await page.evaluate(
+      async (data) => {
+        data.root = (await window.builder.projects.pickDirectory()) ?? ''
+        return window.builder.projects.create(data)
+      },
+      { ...wizardDefaults(), repository: 'local' as const, root: destination },
+    )
+    await execute('git', [
+      '-C',
+      destination,
+      'config',
+      'user.name',
+      'DevContainer Builder validation',
+    ])
+    await execute('git', [
+      '-C',
+      destination,
+      'config',
+      'user.email',
+      'asantos43@users.noreply.github.com',
+    ])
+    await page.evaluate(
+      async ({ id, owner, name }) => window.builder.git.createRemote(id, owner, name, true),
+      { id: p.id, owner, name },
+    )
+    created = true
+    await page.evaluate(async (p) => {
+      await window.builder.git.commit(p.id, 'test: validate private project workflow', p.files)
+      await window.builder.git.push(p.id)
+    }, p)
+    const result = await execute('gh', [
+      'repo',
+      'view',
+      `${owner}/${name}`,
+      '--json',
+      'isPrivate,defaultBranchRef',
+    ])
+    const repo = JSON.parse(result.stdout)
+    expect(repo.isPrivate).toBe(true)
+    expect(repo.defaultBranchRef.name).toBe('main')
+  } finally {
+    if (created) await execute('gh', ['api', '--method', 'DELETE', `repos/${owner}/${name}`])
+  }
+})
+
+test('OCI template creation and Feature inspection use the bundled CLI without running hooks', async () => {
+  test.skip(process.env.DCB_OCI_E2E !== '1', 'Opt into OCI registry downloads.')
+  test.setTimeout(180000)
+  const destination = path.join(root, 'oci-project')
+  await fs.mkdir(destination)
+  await application.evaluate(({ dialog }, directory) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [directory],
+    })) as typeof dialog.showOpenDialog
+  }, destination)
+  const project = await page.evaluate(() =>
+    window.builder.maintenance.applyTemplate(
+      'ghcr.io/devcontainers/templates/javascript-node:1',
+      {},
+    ),
+  )
+  expect(project?.root).toBe(destination)
+  expect(await fs.readFile(path.join(destination, 'devcontainer-start.sh'), 'utf8')).toContain(
+    'devcontainer up',
+  )
+  expect(
+    (await page.evaluate(() => window.builder.settings.get())).recent.every(
+      (p) => !p.includes('dcb-template-'),
+    ),
+  ).toBe(true)
+  if (!project) throw new Error('Template project missing.')
+  // Templates without Features still exercise the official metadata command.
+  expect(
+    await page.evaluate((id) => window.builder.maintenance.featureVersions(id), project.id),
+  ).toBeDefined()
+})
+
+test('Trivy exports real CycloneDX and dependency vulnerability reports', async () => {
+  test.skip(process.env.DCB_TRIVY_E2E !== '1', 'Opt into Trivy with database network access.')
+  test.setTimeout(240000)
+  const destination = path.join(root, 'security-project')
+  await fs.mkdir(path.join(destination, '.devcontainer'), { recursive: true })
+  await fs.writeFile(
+    path.join(destination, '.devcontainer/devcontainer.json'),
+    '{"image":"alpine:3.22"}',
+  )
+  await fs.writeFile(
+    path.join(destination, 'package.json'),
+    '{"name":"security-fixture","version":"1.0.0","dependencies":{"lodash":"4.17.20"}}',
+  )
+  await fs.writeFile(
+    path.join(destination, 'package-lock.json'),
+    JSON.stringify({
+      name: 'security-fixture',
+      version: '1.0.0',
+      lockfileVersion: 3,
+      packages: {
+        '': { dependencies: { lodash: '4.17.20' } },
+        'node_modules/lodash': { version: '4.17.20' },
+      },
+    }),
+  )
+  await application.evaluate(({ dialog }, directory) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [directory],
+    })) as typeof dialog.showOpenDialog
+  }, destination)
+  const project = await page.evaluate(() => window.builder.projects.open())
+  if (!project) throw new Error('Missing fixture')
+  for (const kind of ['sbom', 'vulnerabilities'] as const) {
+    const file = path.join(root, kind + '.json')
+    await application.evaluate(({ dialog }, file) => {
+      dialog.showSaveDialog = (async () => ({
+        canceled: false,
+        filePath: file,
+      })) as typeof dialog.showSaveDialog
+    }, file)
+    expect(
+      await page.evaluate(({ id, kind }) => window.builder.maintenance.scan(id, kind), {
+        id: project.id,
+        kind,
+      }),
+    ).toBe(file)
+    const report = JSON.parse(await fs.readFile(file, 'utf8'))
+    if (kind === 'sbom') {
+      expect(report.bomFormat).toBe('CycloneDX')
+      expect(report.components.some((c: { name: string }) => c.name === 'lodash')).toBe(true)
+    } else
+      expect(
+        report.Results.some(
+          (r: { Vulnerabilities?: unknown[] }) => (r.Vulnerabilities?.length ?? 0) > 0,
+        ),
+      ).toBe(true)
+  }
+})
+
+test('clones a public repository into a new volume without changing the host workspace', async () => {
+  test.skip(
+    process.env.DCB_VOLUME_CLONE_E2E !== '1',
+    'Opt into public GitHub clone and package downloads.',
+  )
+  test.setTimeout(120000)
+  const client = new Docker()
+  const volume = 'dcb-clone-' + path.basename(root).toLowerCase()
+  try {
+    expect(
+      await page.evaluate(
+        (name) =>
+          window.builder.maintenance.cloneVolume(
+            name,
+            'https://github.com/octocat/Hello-World.git',
+            'master',
+          ),
+        volume,
+      ),
+    ).toBe(volume)
+    const container = await client.createContainer({
+      Image: 'alpine:3.22',
+      Cmd: ['cat', '/data/repository/README'],
+      HostConfig: { Mounts: [{ Type: 'volume', Source: volume, Target: '/data', ReadOnly: true }] },
+    })
+    try {
+      await container.start()
+      expect((await container.wait()).StatusCode).toBe(0)
+      expect((await container.logs({ stdout: true })).toString()).toContain('Hello World')
+    } finally {
+      await container.remove({ force: true, v: false })
+    }
+  } finally {
+    await client
+      .getVolume(volume)
+      .remove()
+      .catch(() => {})
+  }
 })

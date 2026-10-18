@@ -7,8 +7,8 @@ Validated locally on Linux x64 with Node.js 22.23.1, Electron 44.9.0 and Docker 
 | Check                                                                 | Result                                                                  |
 | --------------------------------------------------------------------- | ----------------------------------------------------------------------- |
 | TypeScript, ESLint, Prettier                                          | Passed                                                                  |
-| Domain/filesystem/runtime regression tests                            | 37 passed                                                               |
-| Electron/Playwright scenarios with Docker and private GitHub opt-ins  | 5 passed                                                                |
+| Domain/filesystem/runtime regression tests                            | 59 passed                                                               |
+| Electron/Playwright scenarios with Docker/Podman/OCI/Trivy opt-ins    | 13 passed, 1 permission-gated test skipped                              |
 | CLI build, lifecycle, host workspace, named volume and Dockerode exec | Passed                                                                  |
 | Official Docker outside of Docker Feature, non-root host access       | Passed                                                                  |
 | Interactive shell, remoteEnv, disconnect on stop                      | Passed                                                                  |
@@ -20,10 +20,25 @@ Validated locally on Linux x64 with Node.js 22.23.1, Electron 44.9.0 and Docker 
 | macOS Intel / Apple Silicon                                           | Blocked before runner startup by GitHub account billing/spending limits |
 | Windows execution and installer validation                            | Pending a Windows machine                                               |
 | Windows signing and macOS signing/notarization                        | Pending maintainer credentials                                          |
-| Creating/pushing a remote through the application                     | Pending dedicated test-repository validation                            |
+| Creating/pushing a remote through the application                     | Private creation, selected commit and push passed                       |
 
 The macOS workflow exists exclusively for macOS. GitHub reported that jobs could not start because recent account payments failed or the spending limit must be increased. No macOS test/build result is claimed. Resolve billing and rerun the workflow; Linux/Windows remain local.
 
 Context7 MCP was registered globally and OAuth completed. Playwright MCP and its browser were installed and a real `about:blank` navigation succeeded. These are developer tools, separate from the application’s test dependencies.
 
-The implementation is delivered on `feat/devcontainer-workbench` through PR #1. It is not merged automatically. Build artifacts remain in the local ignored `release/` folder; no release was published.
+The initial implementation was delivered through PR #1 and subsequently merged by the maintainer. Follow-up changes use their own branch and pull request, without automatic merge. Build artifacts remain in the local ignored `release/` folder; no release was published.
+
+## Themes, Podman and workbench extensions
+
+This follow-up was validated on Fedora Linux x64 using Docker 29.9.1, Podman 5.8.9, CLI 0.89.0, Monaco 0.57.0 and Trivy 0.76.0. The Trivy Linux binary was downloaded from its official release into `/tmp` and checked against the release SHA-256 manifest; it is not a bundled application dependency.
+
+- The full Electron suite passed 13 scenarios; its disposable GitHub-creation scenario was skipped because deletion permission is absent.
+- TypeScript, ESLint, formatting and 59 unit/domain/filesystem tests passed; npm audit found no known vulnerabilities.
+- Theme persistence, Monaco/xterm palette changes and Compose comment preservation passed in Electron.
+- Real Docker and rootless Podman startup, shell, stop, standalone scripts and volume TAR export/restore passed. The corrected Podman scenario passed three consecutive repetitions.
+- Compose built the development service and stopped its associated service containers.
+- OCI template creation, Feature metadata inspection, public clone into a named volume, real CycloneDX output and dependency vulnerability reports passed.
+- Private GitHub remote creation, selected-file commit and push passed. Cleanup returned HTTP 403 because the OAuth token lacks repository deletion permission. The fixture `asantos43/dcb-validation-dcb-e2e-x1skxl` was left **private and archived**; TODO tracks manual removal. Future disposable-repository tests skip before creation without `delete_repo` scope.
+- Linux AppImage/DEB generation and the packaged window, bundled CLI and updater module passed. The updater's private-release credential requirement was verified without contacting releases. No release was published.
+
+Actual remote SSH/TLS servers, native Windows/PowerShell, Podman Machine, platform signing/notarization and installation of a signed application update remain unvalidated. Live registry login with user credentials was not performed; stdin/redaction handling has subprocess regression coverage. These limits are tracked in TODO and the guides.

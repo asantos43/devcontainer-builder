@@ -15,8 +15,17 @@ vi.mock('electron', () => ({
     showOpenDialog: vi.fn(),
   },
 }))
-vi.mock('../src/main/settings', () => ({ remember: mocks.remember }))
-import { checkedPath, hasChanged, loadProject, saveProject } from '../src/main/projects'
+vi.mock('../src/main/settings', () => ({
+  remember: mocks.remember,
+  getSettings: async () => ({ engine: 'podman' }),
+}))
+import {
+  checkedPath,
+  createHelperScripts,
+  hasChanged,
+  loadProject,
+  saveProject,
+} from '../src/main/projects'
 import { exportPlan, exportZip } from '../src/main/export'
 let root: string
 beforeEach(async () => {
@@ -117,4 +126,43 @@ describe('existing projects and exports', () => {
     expect(archive.toString('latin1')).toContain('DEVCONTAINER-EXPORT.json')
     await expect(exportZip(p.id, [p.configPath, p.dockerfilePath!, '../secret'])).rejects.toThrow()
   })
+})
+
+describe('Compose project persistence', () => {
+  it('retains YAML and Dockerfile comments across load/save and detects external YAML edits', async () => {
+    await fs.writeFile(
+      path.join(root, '.devcontainer/devcontainer.json'),
+      '{"dockerComposeFile":["compose.yaml","override.yaml"],"service":"app"}',
+    )
+    await fs.writeFile(
+      path.join(root, '.devcontainer/compose.yaml'),
+      '# production Compose\nservices:\n  app:\n    build:\n      context: ..\n      dockerfile: .devcontainer/Dockerfile\n',
+    )
+    await fs.writeFile(
+      path.join(root, '.devcontainer/override.yaml'),
+      '# override note\nservices:\n  app:\n    environment:\n      KEEP: yes\n',
+    )
+    const p = await loadProject(root)
+    expect(p.dockerfilePath).toBe('.devcontainer/Dockerfile')
+    const saved = await saveProject(p)
+    expect(saved.composeFiles).toEqual(p.composeFiles)
+    expect(saved.dockerfile).toBe(p.dockerfile)
+    await fs.appendFile(path.join(root, '.devcontainer/override.yaml'), '# external\n')
+    await expect(saveProject(saved)).rejects.toThrow('changed on disk')
+  })
+  it('generates missing helper scripts and preserves existing custom scripts', async () => {
+    const p = await loadProject(root)
+    await fs.writeFile(path.join(root, 'devcontainer-start.sh'), '# custom\n')
+    expect(await createHelperScripts(p.id)).toHaveLength(6)
+    expect(await fs.readFile(path.join(root, 'devcontainer-start.sh'), 'utf8')).toBe('# custom\n')
+    expect(await fs.readFile(path.join(root, 'devcontainer-stop.sh'), 'utf8')).toContain(
+      'DCB_ENGINE:-podman',
+    )
+    expect(await createHelperScripts(p.id)).toEqual([])
+  })
+})
+
+it('allows invalid Compose references to open for source repair', async () => {
+  await fs.writeFile(path.join(root, '.devcontainer/devcontainer.json'), '{"dockerComposeFile":42}')
+  expect((await loadProject(root)).configText).toContain('42')
 })

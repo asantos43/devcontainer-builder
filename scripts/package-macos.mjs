@@ -17,4 +17,7 @@ for (const name of [
   if (!process.env[name]) delete process.env[name]
 }
 if (!process.env.CSC_LINK) process.env.CSC_IDENTITY_AUTO_DISCOVERY = 'false'
-await build({ targets: Platform.MAC.createTarget(['dmg'], Arch[architecture]), publish: 'never' })
+await build({
+  targets: Platform.MAC.createTarget(['dmg', 'zip'], Arch[architecture]),
+  publish: 'never',
+})

@@ -69,7 +69,7 @@ export async function tracked<T>(
     signal: controller.signal,
     output: (text) => emit({ id, channel, kind: 'output', text }),
   }
-  op.output('Starting repository/project operation…\n')
+  op.output('Starting operation…\n')
   try {
     const result = await task(op)
     emit({ id, channel, kind: 'done', text: 'Project operation completed.' })
@@ -118,6 +118,8 @@ export async function run(
     output?: (text: string) => void
     timeout?: number
     env?: NodeJS.ProcessEnv
+    input?: string
+    sensitive?: string[]
     allowFailure?: boolean
   } = {},
 ): Promise<{ stdout: string; stderr: string; code: number }> {
@@ -126,9 +128,15 @@ export async function run(
       cwd: options.cwd,
       env: commandEnv(options.env),
       windowsHide: true,
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: [options.input !== undefined ? 'pipe' : 'ignore', 'pipe', 'pipe'],
       shell: false,
     })
+    child.stdin?.on('error', () => {})
+    if (options.input !== undefined) child.stdin?.end(options.input)
+    const sanitize = (value: string): string =>
+      (options.sensitive ?? [])
+        .filter(Boolean)
+        .reduce((text, secret) => text.split(secret).join('[redacted]'), redact(value))
     let stdout = ''
     let stderr = ''
     let timedOut = false
@@ -145,13 +153,13 @@ export async function run(
       stop()
     }, options.timeout ?? 120000)
     const collect = (stream: 'stdout' | 'stderr', data: Buffer): void => {
-      const text = data.toString()
-      options.output?.(redact(text))
+      const text = sanitize(data.toString())
+      options.output?.(sanitize(text))
       if (stream === 'stdout') stdout = (stdout + text).slice(-2_000_000)
       else stderr = (stderr + text).slice(-2_000_000)
     }
-    child.stdout.on('data', (data) => collect('stdout', data))
-    child.stderr.on('data', (data) => collect('stderr', data))
+    child.stdout?.on('data', (data) => collect('stdout', data))
+    child.stderr?.on('data', (data) => collect('stderr', data))
     child.on('error', reject)
     child.on('close', (code) => {
       clearTimeout(timeout)
@@ -159,8 +167,12 @@ export async function run(
       if (options.signal?.aborted) return reject(new Error('Operation cancelled.'))
       if (timedOut) return reject(new Error(`Timed out: ${binary}`))
       if (code !== 0 && !options.allowFailure)
-        return reject(new Error(redact(`${binary}: ${stderr || stdout || `exit ${code}`}`)))
-      resolve({ stdout: redact(stdout), stderr: redact(stderr), code: code ?? -1 })
+        return reject(new Error(sanitize(`${binary}: ${stderr || stdout || `exit ${code}`}`)))
+      resolve({ stdout: sanitize(stdout), stderr: sanitize(stderr), code: code ?? -1 })
     })
   })
+}
+
+export function hasActiveOperations(): boolean {
+  return operations.size > 0
 }

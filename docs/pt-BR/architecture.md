@@ -13,3 +13,9 @@ A CLI incluída usa utilityProcess do Electron com o endpoint Docker escolhido. 
 Streams publicam eventos tipados, com buffers limitados. Operações têm sinais de cancelamento; sessões e streams são descartados ao fechar. A seleção ZIP rejeita caminhos inseguros, symlinks e arquivos sensíveis reconhecidos; a revisão de dependências é explícita.
 
 O desenvolvimento usa Vite, Tailwind e workers Monaco locais. electron-builder inclui aplicativo, CLI e runtime Electron. Linux/Windows são validados localmente; somente macOS usa GitHub Actions. Consulte a documentação de validação para cobertura e pendências.
+
+O adaptador seleciona Docker ou Podman e compartilha o endpoint com Dockerode, usando certificados TLS ou túnel local do socket SSH. A recuperação de eventos Podman fica em um adaptador POSIX gerado. Documentos Compose participam da proteção contra edições externas e do rollback de JSONC/Dockerfiles. Helpers na raiz usam o mesmo hash de propriedade de raiz/configuração.
+
+Os temas usam variáveis CSS semânticas compartilhadas com Monaco e xterm. O aplicativo controla o ciclo de vida dos editores/modelos Monaco e mantém o hover em serviços com a duração do aplicativo. Os terminais permanecem montados atrás das preferências.
+
+O IPC de manutenção oferece armazenamento nativo de credenciais do registry, templates OCI em staging, lockfiles de Features revisados, clones/TAR de volumes, relatórios Trivy de dependências em disco e ações explícitas de atualização. O IPC expõe operações fixas; uma preferência explícita seleciona o executável do provedor Compose. Diálogos nativos selecionam os destinos dos arquivos. Restauração não sobrescreve volumes existentes. Abrir ou salvar não executa código.

@@ -27,8 +27,14 @@ export interface Project {
   configText: string
   dockerfile: string
   auxiliary: Auxiliary
+  composeFiles?: Record<string, string>
   files: string[]
-  baseline: { configText: string; dockerfile: string; auxiliaryText: string }
+  baseline: {
+    configText: string
+    dockerfile: string
+    auxiliaryText: string
+    composeFiles?: Record<string, string>
+  }
 }
 export interface WizardData {
   name: string
@@ -53,6 +59,12 @@ export interface WizardData {
 }
 export interface Settings {
   locale: Locale
+  theme: string
+  engine: 'docker' | 'podman'
+  composePath: string
+  tlsCertPath: string
+  sshSocketPath: string
+  autoUpdate: boolean
   dockerEndpoint: string
   shell: string
   recent: string[]
@@ -121,7 +133,22 @@ export interface Capability {
 }
 export interface BuilderAPI {
   settings: { get(): Promise<Settings>; save(value: Settings): Promise<Settings> }
+  maintenance: {
+    registryLogin(server: string, username: string, password: string): Promise<void>
+    registryLogout(server: string): Promise<void>
+    applyTemplate(reference: string, options: Record<string, string>): Promise<Project | null>
+    featureVersions(id: string): Promise<string>
+    featureLock(id: string): Promise<string>
+    saveFeatureLock(id: string, content: string): Promise<void>
+    compare(): Promise<string | null>
+    cloneVolume(name: string, url: string, branch: string): Promise<string>
+    backupVolume(name: string): Promise<string | null>
+    restoreVolume(name: string): Promise<string | null>
+    scan(id: string, kind: 'sbom' | 'vulnerabilities'): Promise<string>
+    update(action: 'check' | 'download' | 'install'): Promise<string>
+  }
   projects: {
+    scripts(id: string): Promise<string[]>
     pickDirectory(): Promise<string | null>
     open(): Promise<Project | null>
     openRecent(root: string): Promise<Project>
@@ -133,7 +160,9 @@ export interface BuilderAPI {
   }
   system: {
     capabilities(): Promise<Capability[]>
-    contexts(): Promise<{ name: string; endpoint: string }[]>
+    contexts(
+      engine?: 'docker' | 'podman',
+    ): Promise<{ name: string; endpoint: string; socketPath?: string }[]>
   }
   git: {
     info(id: string): Promise<GitInfo>

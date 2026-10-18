@@ -45,6 +45,8 @@ jobs:
           name: macos-${{ matrix.arch }}
           path: |
             release/*.dmg
+            release/*.zip
+            release/*.yml
             release/*.blockmap
             test-results/
           if-no-files-found: warn
