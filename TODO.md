@@ -40,6 +40,9 @@
 
 ## Release verification
 
+- [ ] Define and document minimum requirements for each Windows, Linux and macOS release, including supported OS versions, CPU architectures, required system libraries, hardware resources and external dependencies; distinguish application requirements from prerequisites for container operations.
+- [ ] Enforce release requirements through package metadata and installer/startup checks where applicable; block unsupported installation, execution or affected container operations with clear messages identifying unmet requirements and how to resolve them.
+- [ ] Verify requirement enforcement on supported and unsupported environments, using macOS-only GitHub Actions and local Windows/Linux validation.
 - [ ] Validate Windows installer and Docker Desktop on a Windows machine
 - [ ] Validate macOS Intel/Apple Silicon workflow and local Docker Desktop
 - [ ] Configure Windows signing and macOS signing/notarization credentials
