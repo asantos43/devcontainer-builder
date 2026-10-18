@@ -23,6 +23,17 @@
 - [x] Docker/Podman selection and rootless API support
 - [x] Generated POSIX/PowerShell start, stop and shell scripts at project root
 
+## Template library and Dev Container import
+
+- [ ] Create reusable templates from existing Dev Container projects, preserving JSONC/Dockerfile/Compose comments, Features, supporting files and lifecycle helper scripts.
+- [ ] Read templates from local or remote Git repositories, with repository revision and template subfolder selection.
+- [ ] Provide a searchable template palette for common development environments, including Node.js/TypeScript, Python, Go, Java, .NET, Rust, PHP, Ruby and Compose-based stacks.
+- [ ] Show template descriptions, prerequisites and configurable options in the creation wizard, then open the generated project in the main editor for fine-tuning.
+- [ ] Import a Dev Container from a folder into a selected workspace, building on the existing open-in-place workflow.
+- [ ] Import a Dev Container from a ZIP archive, discovering configurations and their supporting files.
+- [ ] Preview import contents and choose the destination/configuration before writing; preserve existing files and never run lifecycle hooks during import.
+- [ ] Validate ZIP paths and extraction limits, reject entries that escape the destination, and exclude credentials and Git metadata when creating reusable templates.
+
 ## Release verification
 
 - [ ] Validate Windows installer and Docker Desktop on a Windows machine
