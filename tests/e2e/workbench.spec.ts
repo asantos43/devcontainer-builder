@@ -139,6 +139,47 @@ test('bundled CLI executes with the Electron utility Node runtime', async () => 
   expect(result.output).toMatch(/\d+\.\d+\.\d+/)
 })
 
+test('opens and saves variable-based mounts without configuration errors or executing hooks', async () => {
+  const destination = path.join(root, 'existing-mounts')
+  await fs.mkdir(path.join(destination, '.devcontainer'), { recursive: true })
+  const config = {
+    name: 'Task Authoring',
+    image: 'alpine:3.22',
+    workspaceMount: 'source=${localWorkspaceFolder},target=/workspace,type=bind',
+    workspaceFolder: '/workspace',
+    mounts: [
+      'source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind',
+      'source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind',
+    ],
+    initializeCommand: 'echo unexpected > opening-hook-ran',
+    custom: { preserved: true },
+  }
+  const filename = path.join(destination, '.devcontainer/devcontainer.json')
+  await fs.writeFile(filename, '// production note\n' + JSON.stringify(config, null, 2))
+  await application.evaluate(({ dialog }, directory) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [directory],
+    })) as typeof dialog.showOpenDialog
+  }, destination)
+  await page.getByRole('button', { name: 'Abrir dev container', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Visão geral do ambiente' })).toBeVisible()
+  await page.locator('.panel-tabs').getByRole('button', { name: 'PROBLEMAS', exact: true }).click()
+  await expect(page.getByText('Nenhum problema de configuração.', { exact: true })).toBeVisible()
+  await page.getByLabel('Nome', { exact: true }).fill('Reviewed Task Authoring')
+  await page.getByTitle('Salvar alterações').click()
+  await page.getByRole('button', { name: 'Salvar alterações revisadas', exact: true }).click()
+  await expect(page.getByText('Salvo', { exact: true })).toBeVisible()
+  const saved = await fs.readFile(filename, 'utf8')
+  expect(saved).toContain('// production note')
+  expect(JSON.parse(saved.slice(saved.indexOf('{')))).toEqual({
+    ...config,
+    name: 'Reviewed Task Authoring',
+  })
+  expect(await fs.readdir(destination)).not.toContain('opening-hook-ran')
+  await expect(page.locator('.statusbar')).toContainText('not-created')
+})
+
 test('Docker runtime, interactive shell and exported ZIP rebuild through the real application', async () => {
   test.skip(
     process.env.DCB_DOCKER_E2E !== '1',
@@ -157,6 +198,8 @@ test('Docker runtime, interactive shell and exported ZIP rebuild through the rea
     name: 'Runtime fixture',
     build: { dockerfile: 'Dockerfile', context: '..' },
     workspaceMount: 'type=bind,source=${localWorkspaceFolder},target=/workspace',
+    mounts: ['source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind'],
+    containerEnv: { HOST_WORKSPACE: '${localWorkspaceFolder}' },
     workspaceFolder: '/workspace',
     remoteUser: 'root',
     remoteEnv: { REMOTE_TEST: 'yes' },
@@ -174,7 +217,8 @@ test('Docker runtime, interactive shell and exported ZIP rebuild through the rea
         {
           id: 'runtime',
           name: 'Runtime check',
-          command: 'test -f /image-marker && test "$REMOTE_TEST" = yes && cat /image-marker',
+          command:
+            'test -f /image-marker && test "$REMOTE_TEST" = yes && test -f "$HOST_WORKSPACE/marker.txt" && cat /image-marker',
           timeout: 10000,
           expectedCode: 0,
         },

@@ -28,6 +28,8 @@ Heredocs e sintaxe desconhecida permanecem editáveis em código. A edição vis
 
 O workspace usa `${localWorkspaceFolder}` e o destino interno configurado. Adicione pastas do host ou volumes nomeados com destino e modo de acesso. Criar volume é uma ação explícita. Remover montagem não apaga dados. Caminhos com vírgulas não são suportados na representação de mounts em string. Pastas externas exigem remapeamento ao transferir o projeto.
 
+Destinos de mounts e caminhos do workspace podem começar com variáveis do Dev Containers, por exemplo `target=${localWorkspaceFolder}`. Volumes nomeados também podem usar variáveis como `${devcontainerId}`. As referências são preservadas na configuração salva; a CLI oficial expande as variáveis e valida os valores efetivos ao iniciar ou testar. Consulte a [referência de variáveis do Dev Containers](https://github.com/devcontainers/spec/blob/main/docs/specs/devcontainerjson-reference.md#variables-in-devcontainerjson).
+
 `forwardPorts` informa encaminhamentos para IDEs compatíveis; o aplicativo não implementa túneis de IDE. Publique portas em `runArgs`, por exemplo `["-p", "127.0.0.1:3000:3000"]`. A inspeção Docker mostra os bindings reais.
 
 ## Executar, inspecionar e testar

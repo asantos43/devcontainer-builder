@@ -79,6 +79,85 @@ describe('JSONC configuration', () => {
     }
     expect(parseMount(mountString(m))).toEqual(m)
   })
+  it('accepts imported mount targets with variables without changing the template', () => {
+    const config = {
+      name: 'Task Authoring',
+      build: { dockerfile: 'Dockerfile' },
+      workspaceMount: 'source=${localWorkspaceFolder},target=/workspace,type=bind',
+      workspaceFolder: '/workspace',
+      mounts: [
+        'source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind',
+        'source=${localWorkspaceFolder},target=${localWorkspaceFolder},type=bind',
+      ],
+    }
+    const text = '// existing production config\n' + JSON.stringify(config, null, 2)
+    expect(validateConfig(text)).toEqual([])
+    const changed = patchConfig(text, ['name'], 'Reviewed')
+    expect(changed).toContain('// existing production config')
+    expect(readConfig(changed).config.mounts).toEqual(config.mounts)
+    expect(readConfig(changed).config.workspaceMount).toBe(config.workspaceMount)
+    const parsed = parseMount(config.mounts[1])!
+    expect(mountString(parsed)).toBe(
+      'type=bind,source=${localWorkspaceFolder},target=${localWorkspaceFolder}',
+    )
+  })
+  it.each([
+    '${localWorkspaceFolder}',
+    '${containerWorkspaceFolder}/cache',
+    '${localEnv:CONTAINER_PATH:/workspace}',
+  ])('defers expansion of the container path %s to the CLI', (target) => {
+    const mount = {
+      type: 'bind' as const,
+      source: '${localWorkspaceFolder}',
+      target,
+      readOnly: false,
+    }
+    expect(parseMount(mountString(mount))).toEqual(mount)
+    expect(
+      validateConfig(JSON.stringify({ image: 'alpine', workspaceFolder: target, mounts: [mount] })),
+    ).toEqual([])
+  })
+  it('accepts variable-based volume names while validating their literal parts', () => {
+    const mount = {
+      type: 'volume' as const,
+      source: '${localWorkspaceFolderBasename}-${devcontainerId}-cache',
+      target: '/cache',
+      readOnly: false,
+    }
+    expect(parseMount(mountString(mount))).toEqual(mount)
+    expect(validateConfig(JSON.stringify({ image: 'alpine', mounts: [mount] }))).toEqual([])
+    expect(() => mountString({ ...mount, source: '${devcontainerId}-bad name' })).toThrow(
+      'Invalid Docker volume name',
+    )
+  })
+  it.each(['', 'relative/path', 'relative/${localWorkspaceFolder}', '${localWorkspaceFolder'])(
+    'rejects invalid literal or incomplete container paths: %s',
+    (target) => {
+      expect(() =>
+        mountString({ type: 'bind', source: '/source', target, readOnly: false }),
+      ).toThrow('absolute container path')
+      expect(
+        validateConfig(
+          JSON.stringify({
+            image: 'alpine',
+            mounts: [{ type: 'bind', source: '/source', target }],
+          }),
+        ).some((d) => d.level === 'error'),
+      ).toBe(true)
+    },
+  )
+  it('still reports duplicate and nested variable-based mount destinations', () => {
+    const mounts = [
+      'type=bind,source=/first,target=${localWorkspaceFolder}',
+      'type=bind,source=/second,target=${localWorkspaceFolder}',
+      'type=bind,source=/third,target=${localWorkspaceFolder}/cache',
+    ]
+    const diagnostics = validateConfig(JSON.stringify({ image: 'alpine', mounts }))
+    expect(diagnostics.filter((d) => d.level === 'error')).toEqual([
+      { level: 'error', message: 'Duplicate mount destination: ${localWorkspaceFolder}' },
+    ])
+    expect(diagnostics.some((d) => d.message.includes('Nested mount'))).toBe(true)
+  })
   it('rejects ambiguous comma-separated paths and invalid volume names', () => {
     expect(() =>
       mountString({ type: 'bind', source: '/a,b', target: '/data', readOnly: false }),
