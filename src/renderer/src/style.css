@@ -700,7 +700,7 @@ a {
   color: var(--foreground);
 }
 .file-tree > button.active,
-.outline > button.active {
+.configuration-nav > button.active {
   background: var(--raised);
   color: var(--foreground);
 }
@@ -709,11 +709,11 @@ a {
   width: 5px;
   height: 5px;
 }
-.outline {
+.configuration-nav {
   padding: 0 9px;
   overflow: auto;
 }
-.outline > button {
+.configuration-nav > button {
   width: 100%;
   border: 0;
   background: none;
@@ -725,10 +725,10 @@ a {
   border-radius: 4px;
   margin: 1px 0;
 }
-.outline > button:hover {
+.configuration-nav > button:hover {
   background: var(--raised);
 }
-.outline > button.active svg {
+.configuration-nav > button.active svg {
   color: var(--accent);
 }
 .sidebar-empty {

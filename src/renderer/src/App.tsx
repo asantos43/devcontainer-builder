@@ -384,7 +384,7 @@ function Workbench({
               <div className="sidebar-section section-gap">
                 {t('CONFIGURATION', 'CONFIGURAÇÃO')}
               </div>
-              <div className="outline">
+              <div className="configuration-nav">
                 {tabs.map((value) => (
                   <button
                     className={!preferences && tab === value ? 'active' : ''}
