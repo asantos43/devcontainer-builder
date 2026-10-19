@@ -57,3 +57,9 @@ Nesta branch passaram TypeScript, ESLint, formatação e 113 testes em 14 arquiv
 - Publicação OCI real, login real em registry, instaladores/motores nativos, assinatura/notarização, motores remotos e entrega de atualização assinada não foram executados. A exclusão do repositório de validação arquivado foi tentada novamente e retornou HTTP 403 com a credencial GitHub atual.
 
 Artefatos Linux ficam em `release/`, ignorado pelo Git; nenhum release do aplicativo ou template OCI foi publicado. O único workflow CI continua sendo macOS.
+
+## Repositório público e validação macOS
+
+Após o repositório tornar-se público, os runners Intel e Apple Silicon iniciaram. A primeira execução encontrou uma asserção de caminhos /var versus /private/var; raízes canônicas e cobertura de entrada por symlink corrigiram o teste. As duas arquiteturas passaram no [workflow seguinte](https://github.com/asantos43/devcontainer-builder/actions/runs/39190217041): 115 testes de domínio aprovados e um exclusivo de Linux ignorado, além de 12 cenários Electron aprovados e 12 integrações opcionais ignoradas por arquitetura. Ambas geraram DMG/ZIP sem assinatura e passaram em janela empacotada, CLI 0.89.0 e bloqueio do atualizador antes de download.
+
+A evolução para atualizações públicas passou em 116 testes e 12 cenários Electron locais no Linux, com 12 integrações opcionais ignoradas. AppImage/DEB e o atualizador empacotado sem token GitHub também passaram. As notas da prévia pública 0.1.0 registram os limites de assinatura e motores nativos; os resultados anteriores de repositório privado/cobrança acima são históricos.

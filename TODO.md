@@ -45,7 +45,8 @@
 - [x] Add simulated supported/unsupported platform policy tests and local Linux startup checks; run system diagnostics in the macOS-only workflow.
 - [ ] Complete native requirement/installer validation on supported and unsupported Windows/macOS machines; simulated policy tests do not replace native validation.
 - [ ] Validate Windows installer and Docker Desktop on a Windows machine
-- [ ] Validate macOS Intel/Apple Silicon workflow and local Docker Desktop
+- [x] Validate macOS Intel/Apple Silicon workflow, unsigned DMG/ZIP builds and packaged window/CLI/updater checks
+- [ ] Validate local Docker Desktop and installation on physical macOS Intel/Apple Silicon machines
 - [ ] Configure Windows signing and macOS signing/notarization credentials
 - [x] Exercise private GitHub remote creation, selected-file commit and push with a dedicated test repository
 - [ ] Delete archived validation repository `asantos43/dcb-validation-dcb-e2e-x1skxl` with an account/token that can delete repositories

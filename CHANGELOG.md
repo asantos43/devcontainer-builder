@@ -4,6 +4,8 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-18
+
 ### Added
 
 - Searchable development template palette, reusable project snapshots and local/remote Git template sources with revision/subfolder selection.
