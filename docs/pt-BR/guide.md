@@ -36,6 +36,8 @@ Destinos de mounts e caminhos do workspace podem começar com variáveis do Dev 
 
 Salve e escolha Iniciar ou Testar. Revise comandos do host, Features e montagens. A CLI oficial aplica Features e hooks. Docker do host usa a Feature oficial Docker outside of Docker e permite controlar o daemon do host.
 
+Iniciar fica disponível quando o container gerenciado está ausente, criado ou parado; Parar fica disponível quando está em execução, pausado ou reiniciando. Ambos ficam desabilitados durante operações de execução e enquanto o status do motor é desconhecido ou indisponível. O status é atualizado ao abrir o projeto, trocar a conexão do motor, voltar para a janela e a cada três segundos, incluindo mudanças feitas pelo Docker/Podman fora do aplicativo.
+
 O terminal usa usuário/workspace efetivos, tenta o shell configurado e depois `/bin/sh`. Logs incluem build, Git e saída do container. Os buffers são limitados; copie ou exporte a saída quando necessário.
 
 Verificações personalizadas executam sequencialmente após inicialização/inspeção, com nome, comando, diretório, timeout e código esperado. A primeira falha interrompe a sequência. Exporte relatório JSON na aba Testes. Cancelar encerra o coordenador; verifique recursos remanescentes. O encerramento de grupos de processos é uma tentativa quando a imagem não possui `setsid`.

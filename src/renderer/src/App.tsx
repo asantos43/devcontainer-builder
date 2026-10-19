@@ -26,13 +26,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
-import type {
-  Capability,
-  OperationEvent,
-  Project,
-  RuntimeState,
-  Settings,
-} from '../../shared/types'
+import type { Capability, OperationEvent, Project, Settings } from '../../shared/types'
 import { patchConfig, readConfig, validateConfig } from '../../shared/config'
 import { Editors, tabLabel, tabs, type Tab } from './Editors'
 import { Wizard } from './Wizard'
@@ -43,6 +37,7 @@ import { defaultSettings as fallback } from '../../shared/settings'
 import { themes } from '../../shared/themes'
 import { ThemeProvider } from './themes'
 import { ApplicationTools } from './Roadmap'
+import { useRuntimeState } from './useRuntimeState'
 function isDirty(p: Project | undefined): boolean {
   if (!p) return false
   let aux
@@ -89,7 +84,16 @@ function Workbench({
   const [saveReview, setSaveReview] = useState(false)
   const [external, setExternal] = useState(false)
   const [capabilities, setCapabilities] = useState<Capability[]>([])
-  const [state, setState] = useState<RuntimeState>({ status: 'not-created' })
+  const { state, refreshState } = useRuntimeState(
+    project?.id,
+    JSON.stringify([
+      settings.engine,
+      settings.dockerEndpoint,
+      settings.tlsCertPath,
+      settings.sshSocketPath,
+      settings.composePath,
+    ]),
+  )
   const [panel, setPanel] = useState<'terminal' | 'logs' | 'problems' | 'tests'>('logs')
   const [output, setOutput] = useState('')
   const [testOutput, setTestOutput] = useState('')
@@ -102,6 +106,10 @@ function Workbench({
   const dirty = isDirty(project)
   const c = project ? readConfig(project.configText).config : {}
   const diagnostics = project ? validateConfig(project.configText) : []
+  const runtimeBusy = busy || active.some((o) => o.channel === 'build' || o.channel === 'tests')
+  const canStart = ['not-created', 'created', 'exited'].includes(state.status)
+  const canStop = ['running', 'paused', 'restarting'].includes(state.status)
+  const canTest = !['checking', 'unavailable', 'removing'].includes(state.status)
   const showError = useCallback((value: string) => {
     setError(value)
   }, [])
@@ -112,15 +120,6 @@ function Workbench({
       .catch((e) => setError(String(e)))
       .finally(() => setBusy(false))
   }, [])
-  const refreshState = useCallback(async () => {
-    if (project) {
-      try {
-        setState(await window.builder.runtime.state(project.id))
-      } catch {
-        setState({ status: 'unavailable' })
-      }
-    }
-  }, [project?.id])
   useEffect(
     () =>
       window.builder.onEvent((event) => {
@@ -174,7 +173,6 @@ function Workbench({
     setTab('general')
     setPreferences(false)
     setExternal(false)
-    setState({ status: 'not-created' })
     setSettings(await window.builder.settings.get())
     setMessage(t('Project opened', 'Projeto aberto'))
     void window.builder.git
@@ -457,9 +455,7 @@ function Workbench({
                 </button>
                 <button
                   title={t('Start environment', 'Iniciar ambiente')}
-                  disabled={
-                    busy || active.some((o) => o.channel === 'build' || o.channel === 'tests')
-                  }
+                  disabled={runtimeBusy || !canStart}
                   onClick={() => run(() => startAction('start'))}
                 >
                   <Play size={14} />
@@ -467,9 +463,7 @@ function Workbench({
                 </button>
                 <button
                   className="success-button"
-                  disabled={
-                    busy || active.some((o) => o.channel === 'build' || o.channel === 'tests')
-                  }
+                  disabled={runtimeBusy || !canTest}
                   onClick={() => run(() => startAction('test'))}
                 >
                   <Check size={14} />
@@ -478,11 +472,15 @@ function Workbench({
                 <button
                   className="icon-button"
                   title={t('Stop container', 'Parar container')}
-                  disabled={busy}
+                  aria-label={t('Stop container', 'Parar container')}
+                  disabled={runtimeBusy || !canStop}
                   onClick={() =>
                     run(async () => {
-                      await window.builder.runtime.stop(project.id)
-                      await refreshState()
+                      try {
+                        await window.builder.runtime.stop(project.id)
+                      } finally {
+                        await refreshState()
+                      }
                     })
                   }
                 >
@@ -933,7 +931,7 @@ function Workbench({
                 2,
               )}
             </pre>
-            <button className="primary" onClick={() => run(execute)}>
+            <button className="primary" disabled={busy} onClick={() => run(execute)}>
               <Play size={14} />
               {trust === 'test'
                 ? t('Build & test', 'Construir e testar')

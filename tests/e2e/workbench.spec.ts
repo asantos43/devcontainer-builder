@@ -177,7 +177,224 @@ test('opens and saves variable-based mounts without configuration errors or exec
     name: 'Reviewed Task Authoring',
   })
   expect(await fs.readdir(destination)).not.toContain('opening-hook-ran')
-  await expect(page.locator('.statusbar')).toContainText('not-created')
+  await expect(page.locator('.statusbar')).toContainText(/not-created|unavailable/)
+})
+
+type RuntimeHarness = {
+  status: string
+  fail: boolean
+  delayFirst: boolean
+  firstId?: string
+  firstRequests: number
+  operationProject?: string
+  releaseState?: () => void
+  releaseStop?: (fail: boolean) => void
+}
+
+async function mockRuntime(status: string, delayFirst = false) {
+  await application.evaluate(
+    ({ ipcMain }, initial) => {
+      const host = globalThis as typeof globalThis & { runtimeHarness: RuntimeHarness }
+      const mock: RuntimeHarness = {
+        ...initial,
+        fail: false,
+        firstRequests: 0,
+      }
+      host.runtimeHarness = mock
+      ipcMain.removeHandler('runtime:state')
+      ipcMain.handle('runtime:state', async (_event, id: string) => {
+        mock.firstId ??= id
+        if (id === mock.firstId) mock.firstRequests++
+        if (mock.delayFirst && id === mock.firstId) {
+          const status = mock.status
+          await new Promise<void>((resolve) => {
+            mock.releaseState = resolve
+          })
+          return { status }
+        }
+        if (mock.fail) throw new Error('Test engine unavailable')
+        return { status: mock.status }
+      })
+      ipcMain.removeHandler('runtime:stop')
+      ipcMain.handle(
+        'runtime:stop',
+        () =>
+          new Promise<void>((resolve, reject) => {
+            mock.releaseStop = (fail) => {
+              if (fail) reject(new Error('Test stop failure'))
+              else {
+                mock.status = 'exited'
+                resolve()
+              }
+            }
+          }),
+      )
+      ipcMain.removeHandler('runtime:start')
+      ipcMain.handle('runtime:start', (_event, id: string) => {
+        mock.operationProject = id
+        return 'ui-start-operation'
+      })
+    },
+    { status, delayFirst },
+  )
+}
+
+async function mockStatus(status: string, fail = false) {
+  await application.evaluate(
+    (_electron, update) => {
+      const { runtimeHarness: mock } = globalThis as typeof globalThis & {
+        runtimeHarness: RuntimeHarness
+      }
+      Object.assign(mock, update)
+    },
+    { status, fail },
+  )
+}
+
+async function openRuntimeFixture(name: string) {
+  const destination = path.join(root, name)
+  await fs.mkdir(path.join(destination, '.devcontainer'), { recursive: true })
+  await fs.writeFile(
+    path.join(destination, '.devcontainer/devcontainer.json'),
+    JSON.stringify({ name, image: 'alpine:3.22' }),
+  )
+  await application.evaluate(({ dialog }, directory) => {
+    dialog.showOpenDialog = (async () => ({
+      canceled: false,
+      filePaths: [directory],
+    })) as typeof dialog.showOpenDialog
+  }, destination)
+  await page.getByRole('button', { name: 'Abrir dev container', exact: true }).click()
+  await expect(page.getByRole('heading', { name: 'Visão geral do ambiente' })).toBeVisible()
+}
+
+test('runtime controls follow external status, unavailable engines and pending or failed actions', async () => {
+  test.setTimeout(90000)
+  await mockRuntime('running')
+  await openRuntimeFixture('status-controls')
+  const start = page.getByTitle('Iniciar ambiente', { exact: true })
+  const stop = page.getByTitle('Parar container', { exact: true })
+  const check = page.getByRole('button', { name: 'Testar', exact: true })
+  await expect(start).toBeDisabled()
+  await expect(stop).toBeEnabled()
+  await mockStatus('exited')
+  // No focus or operation event: periodic refresh must detect an external stop.
+  await expect(start).toBeEnabled({ timeout: 10000 })
+  await expect(stop).toBeDisabled()
+  for (const status of ['not-created', 'created', 'paused', 'restarting', 'removing', 'dead']) {
+    await mockStatus(status)
+    await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+    await expect(page.locator('.statusbar')).toContainText(status)
+    const canStart = ['not-created', 'created'].includes(status)
+    const canStop = ['paused', 'restarting'].includes(status)
+    await expect(start).toBeEnabled({ enabled: canStart })
+    await expect(stop).toBeEnabled({ enabled: canStop })
+    await expect(check).toBeEnabled({ enabled: status !== 'removing' })
+  }
+  await mockStatus('running', true)
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.locator('.statusbar')).toContainText('unavailable')
+  await expect(start).toBeDisabled()
+  await expect(stop).toBeDisabled()
+  await expect(check).toBeDisabled()
+  await mockStatus('running')
+  await expect(stop).toBeEnabled({ timeout: 10000 })
+  await stop.click()
+  await expect(start).toBeDisabled()
+  await expect(stop).toBeDisabled()
+  await expect(check).toBeDisabled()
+  await application.evaluate(() => {
+    const { runtimeHarness: mock } = globalThis as typeof globalThis & {
+      runtimeHarness: RuntimeHarness
+    }
+    mock.releaseStop!(true)
+  })
+  await expect(page.getByRole('alert')).toContainText('Test stop failure')
+  await expect(stop).toBeEnabled()
+  await expect(start).toBeDisabled()
+  await stop.click()
+  await expect(stop).toBeDisabled()
+  await application.evaluate(() => {
+    const { runtimeHarness: mock } = globalThis as typeof globalThis & {
+      runtimeHarness: RuntimeHarness
+    }
+    mock.releaseStop!(false)
+  })
+  await expect(start).toBeEnabled()
+  await expect(stop).toBeDisabled()
+  await start.click()
+  await page
+    .getByRole('dialog')
+    .getByRole('button', { name: 'Iniciar ambiente', exact: true })
+    .click()
+  await expect(start).toBeDisabled()
+  await expect(stop).toBeDisabled()
+  await expect(check).toBeDisabled()
+  await mockStatus('running')
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.locator('.statusbar')).toContainText('running')
+  await expect(stop).toBeDisabled()
+  await application.evaluate(({ BrowserWindow }) => {
+    const { runtimeHarness: mock } = globalThis as typeof globalThis & {
+      runtimeHarness: RuntimeHarness
+    }
+    BrowserWindow.getAllWindows()[0].webContents.send('operation:event', {
+      id: 'ui-start-operation',
+      projectId: mock.operationProject,
+      channel: 'build',
+      kind: 'done',
+      text: 'Completed.',
+    })
+  })
+  await expect(start).toBeDisabled()
+  await expect(stop).toBeEnabled()
+  await expect(check).toBeEnabled()
+})
+
+test('runtime controls ignore delayed state responses after switching projects', async () => {
+  await mockRuntime('exited', true)
+  await openRuntimeFixture('slow-status')
+  const start = page.getByTitle('Iniciar ambiente', { exact: true })
+  const stop = page.getByTitle('Parar container', { exact: true })
+  await expect(page.locator('.statusbar')).toContainText('checking')
+  await expect(start).toBeDisabled()
+  await expect(stop).toBeDisabled()
+  await expect
+    .poll(() =>
+      application.evaluate(() => {
+        const { runtimeHarness: mock } = globalThis as typeof globalThis & {
+          runtimeHarness: RuntimeHarness
+        }
+        return Boolean(mock.releaseState)
+      }),
+    )
+    .toBe(true)
+  await page.evaluate(() => {
+    window.dispatchEvent(new Event('focus'))
+    window.dispatchEvent(new Event('focus'))
+  })
+  await page.waitForTimeout(3200)
+  expect(
+    await application.evaluate(() => {
+      const { runtimeHarness: mock } = globalThis as typeof globalThis & {
+        runtimeHarness: RuntimeHarness
+      }
+      return mock.firstRequests
+    }),
+  ).toBe(1)
+  await mockStatus('running')
+  await openRuntimeFixture('current-status')
+  await expect(page.locator('.statusbar')).toContainText('running')
+  await application.evaluate(() => {
+    const { runtimeHarness: mock } = globalThis as typeof globalThis & {
+      runtimeHarness: RuntimeHarness
+    }
+    mock.releaseState!()
+  })
+  await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+  await expect(page.locator('.statusbar')).toContainText('running')
+  await expect(start).toBeDisabled()
+  await expect(stop).toBeEnabled()
 })
 
 test('Docker runtime, interactive shell and exported ZIP rebuild through the real application', async () => {
@@ -238,12 +455,16 @@ test('Docker runtime, interactive shell and exported ZIP rebuild through the rea
     window.dcbEvents = events
     window.builder.onEvent((event) => events.push(`${event.channel}:${event.kind}:${event.text}`))
   })
+  const start = page.getByTitle('Iniciar ambiente', { exact: true })
+  const stop = page.getByTitle('Parar container', { exact: true })
   const eventText = () => page.evaluate(() => window.dcbEvents.join('\n'))
   try {
     await page.getByRole('button', { name: 'Testar', exact: true }).click()
     await page.getByRole('button', { name: 'Construir e testar', exact: true }).click()
     await expect.poll(eventText, { timeout: 90000 }).toContain('passed: Runtime check')
     await expect(page.locator('.statusbar')).toContainText('running')
+    await expect(start).toBeDisabled()
+    await expect(stop).toBeEnabled()
     expect(await fs.readFile(path.join(destination, 'ready.txt'), 'utf8')).toBe('ready')
     await page.locator('.panel-tabs').getByRole('button', { name: 'TERMINAL', exact: true }).click()
     await page.getByRole('button', { name: 'Conectar shell', exact: true }).click()
@@ -303,6 +524,26 @@ test('Docker runtime, interactive shell and exported ZIP rebuild through the rea
     await page.getByTitle('Parar container').click()
     await expect(page.locator('.statusbar')).toContainText('exited')
     await expect(page.getByRole('button', { name: 'Conectar shell', exact: true })).toBeVisible()
+    await expect(start).toBeEnabled()
+    await expect(stop).toBeDisabled()
+    const client = new Docker({
+      socketPath: process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') || '/var/run/docker.sock',
+    })
+    const value = createHash('sha256')
+      .update(restored + '\0.devcontainer/devcontainer.json')
+      .digest('hex')
+      .slice(0, 24)
+    const containers = await client.listContainers({
+      all: true,
+      filters: JSON.stringify({ label: [`devcontainer-builder.project=${value}`] }),
+    })
+    const container = client.getContainer(containers[0].Id)
+    await container.start()
+    await expect(stop).toBeEnabled({ timeout: 10000 })
+    await expect(start).toBeDisabled()
+    await container.stop()
+    await expect(start).toBeEnabled({ timeout: 10000 })
+    await expect(stop).toBeDisabled()
   } finally {
     const client = new Docker({
       socketPath: process.env.DOCKER_HOST?.replace(/^unix:\/\//, '') || '/var/run/docker.sock',
