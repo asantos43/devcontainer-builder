@@ -33,6 +33,7 @@ All notable changes are documented here.
 
 ### Fixed
 
+- Synchronize Start/Stop availability with the managed container state on project open, engine changes, window focus and periodic refresh; block conflicting actions during runtime operations.
 - Accept Dev Container variable references in mount destinations, workspace paths and volume names without replacing the saved templates.
 - Keep terminal sessions mounted while application preferences are open.
 - Restore Monaco hover factories to application-lifetime services after temporary diff editors close.

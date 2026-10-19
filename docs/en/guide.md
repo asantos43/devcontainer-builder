@@ -36,6 +36,8 @@ Mount destinations and workspace paths may start with Dev Container variables, f
 
 Save changes, then Start or Test. Review host commands, Features and mounts in the execution dialog. The official CLI handles Features and lifecycle semantics. Docker outside of Docker uses the official Feature; the container can control the host Docker daemon when enabled.
 
+Start is available when the managed container is absent, created or stopped; Stop is available when it is running, paused or restarting. Both are disabled during runtime operations and while the engine status is unknown or unavailable. Status refreshes on project open, engine connection changes, window focus and every three seconds, including changes made with Docker/Podman outside the app.
+
 Terminal opens a shell using the effective user and workspace, preferring the configured shell and falling back to `/bin/sh`. Logs include build, Git and followed container output. Buffers are bounded; copy or export output when needed.
 
 Custom checks run sequentially after startup/inspection, with name, command, working directory, timeout and expected exit code. First failure stops the sequence. Export a JSON report from Tests. Cancellation ends the coordinating process; check for remaining resources. Test process-group cancellation is best-effort when the image lacks `setsid`.
