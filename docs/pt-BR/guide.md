@@ -139,3 +139,7 @@ Selecione Claude Code, Codex CLI e/ou OpenCode em Features, opcionalmente fixe s
 Configurações oferece armazenamento criptografado pelo SO para login em registries e clones privados em volumes. Após salvar, somente os nomes voltam à interface; os valores permanecem no processo principal. O armazenamento não injeta secrets automaticamente nas configurações exportadas nem nos scripts gerados. Referências `${localEnv:NOME}` continuam usando o ambiente do host.
 
 Consulte [requisitos de sistema dos releases](system-requirements.md) para plataformas suportadas, bibliotecas nativas, ferramentas por operação e assinatura de produção.
+
+## Pacotes Linux RPM
+
+Execute `npm run package:linux` no Linux para gerar AppImage, DEB e RPM. Para gerar somente RPM, faça o build do aplicativo e execute `npx electron-builder --linux rpm --x64 --publish never`. A geração exige `rpmbuild` e `xz` no host; são ferramentas de build, não requisitos do aplicativo empacotado. Instale o RPM pelo gerenciador da distribuição para resolver as capabilities de bibliotecas e o mínimo de glibc declarados. A validação RPM é local; GitHub Actions continua exclusivo para macOS.

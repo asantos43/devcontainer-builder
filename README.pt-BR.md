@@ -44,7 +44,7 @@ A CLI de Dev Containers acompanha o aplicativo e usa o runtime Node utilitário 
 npm run check          # TypeScript, ESLint e testes de domínio/arquivos
 npm run test:e2e       # Build e testes Electron (exige sessão gráfica)
 npm run test:docker    # Docker real: build, hooks, mounts e exec; baixa Alpine
-npm run package:linux # AppImage e DEB locais
+npm run package:linux # AppImage, DEB e RPM locais
 npm run package:win   # Instalador NSIS local no Windows
 npm run package:mac   # DMG/ZIP em máquina macOS
 ```

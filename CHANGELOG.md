@@ -39,7 +39,7 @@ All notable changes are documented here.
 - xterm.js output, environment checks, cancellation and JSON reports.
 - Selected-file ZIP export with dependency review and sensitive-file exclusions.
 - MPL-2.0 license, bilingual guides and AI agent instructions.
-- Local Linux/Windows packaging and a macOS-only build/test workflow.
+- Local Linux AppImage/DEB/RPM and Windows packaging, with explicit native-library requirements and a macOS-only build/test workflow.
 - Domain, filesystem, Electron UI and opt-in Docker integration tests.
 
 ### Fixed

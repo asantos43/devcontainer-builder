@@ -137,3 +137,7 @@ Select Claude Code, Codex CLI and/or OpenCode in Features, optionally pin their 
 Settings offers an encrypted OS credential store for registry login and private volume cloning. Only names are returned to the UI after storage; secret values remain in the main process. This store does not automatically inject secrets into exported configurations or generated lifecycle scripts. Existing `${localEnv:NAME}` references continue to use the host environment.
 
 See [release system requirements](system-requirements.md) for supported platforms, native libraries, per-operation tools and production signing configuration.
+
+## Linux RPM packages
+
+Run `npm run package:linux` on Linux to create AppImage, DEB and RPM packages. For RPM alone, build the application, then run `npx electron-builder --linux rpm --x64 --publish never`. Building RPM needs host `rpmbuild` and `xz`; they are build tools, not packaged-application requirements. Install the downloaded RPM with the distribution package manager so its declared library capabilities and glibc minimum are resolved. RPM validation runs locally; GitHub Actions remains macOS-only.
