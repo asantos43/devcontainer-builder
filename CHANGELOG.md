@@ -6,6 +6,15 @@ All notable changes are documented here.
 
 ### Added
 
+- Searchable development template palette, reusable project snapshots and local/remote Git template sources with revision/subfolder selection.
+- Reviewed folder/ZIP import with configuration/options selection, immutable previews, conflict protection and archive limits.
+- Local Features for Claude Code, Codex CLI and OpenCode, with optional package version pins.
+- Declarative VS Code JSON/JSONC/tmTheme/VSIX color themes and contributed TextMate grammars without extension JavaScript execution.
+- Built-image Trivy reports, isolated private GitHub volume cloning and OS-encrypted credentials for registry/volume operations.
+- Safe relative TAR links and POSIX metadata preservation during new-volume restore.
+- Explicit OCI template publishing from reviewed snapshots.
+- Bilingual platform/dependency requirements, startup/engine checks, installer metadata and production signing preflight.
+
 - Persistent VS Code palette selection for the workbench, Monaco source/diff editors and xterm terminals.
 - Docker/Podman engine selection, rootless socket discovery, SSH forwarding and TLS endpoint configuration.
 - Compose service/YAML editing, multi-file persistence/export and coordinated service shutdown.

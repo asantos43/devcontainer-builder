@@ -23,9 +23,15 @@ An Electron workbench for creating, editing, testing and exporting development c
 - Generated start/stop/shell helpers in POSIX shell and PowerShell at each project root.
 - Portuguese/English UI. No hosted AI service is required.
 
+- Searchable template palette, reusable project templates and reviewed folder/ZIP/Git import with revision/subfolder selection.
+- Claude Code, Codex CLI and OpenCode installation options through a generated local Feature.
+- VS Code JSON/VSIX color themes with contributed TextMate grammars, encrypted OS credentials, private volume clones and image scans.
+
 ## Run locally
 
 Requires Node.js 22.16+ and npm. Docker Engine/Desktop or Podman with its API socket is required to run containers. Git and GitHub CLI are required for their respective repository actions.
+
+Packaged releases require a supported 64-bit desktop, 2 GiB RAM and 1 GiB free application storage. See [system requirements and operation-specific dependencies](docs/en/system-requirements.md).
 
 ```sh
 npm ci

@@ -10,6 +10,7 @@ import { readConfig, validateConfig, parseMount } from '../shared/config'
 import type { Capability, RuntimeState, TestResult } from '../shared/types'
 import { getSettings } from './settings'
 import { podmanAdapter } from './podman'
+import { assertContainerRequirements } from './requirements'
 import { projectFor, checkedPath, hasChanged } from './projects'
 import { commandEnv, emit, launch, run, redact, type Operation } from './operations'
 
@@ -192,6 +193,7 @@ async function validateMountSources(id: string): Promise<void> {
   }
 }
 async function startInternal(id: string, op: Operation): Promise<void> {
+  await assertContainerRequirements()
   const p = projectFor(id)
   if (await hasChanged(id))
     throw new Error('Files changed on disk. Reload and review before running.')

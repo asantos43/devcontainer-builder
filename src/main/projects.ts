@@ -11,6 +11,7 @@ import type { Auxiliary, Project, WizardData } from '../shared/types'
 import { run, tracked, type Operation } from './operations'
 import { remember, getSettings } from './settings'
 import { helperScripts } from '../shared/helpers'
+import { aiFeatureId, aiFeatureFiles } from '../shared/ai-tools'
 
 const projects = new Map<string, Project>()
 const selectedDirectories = new Set<string>()
@@ -308,6 +309,21 @@ export async function saveProject(incoming: Project): Promise<Project> {
       throw new Error('Load or create the referenced Compose file before saving: ' + file)
     writes.push([file, content])
   }
+  if (
+    !errors.length &&
+    config.features &&
+    typeof config.features === 'object' &&
+    aiFeatureId in config.features
+  ) {
+    for (const [name, content] of Object.entries(aiFeatureFiles)) {
+      const file = path.join(path.dirname(p.configPath), 'builder-ai-tools', name)
+      const full = await checkedPath(p.root, file, true)
+      const existing = await readOptional(full)
+      if (existing && existing !== content)
+        throw new Error('The local AI Feature already exists with custom content: ' + file)
+      writes.push([file, content])
+    }
+  }
   const targets = await Promise.all(
     writes.map(async ([file, text]) => ({ file: await checkedPath(p.root, file, true), text })),
   )
@@ -439,6 +455,13 @@ async function createProjectInternal(data: WizardData, op: Operation): Promise<P
     throw new Error(
       'Dockerfile already exists after clone; open or rename it before creating configuration.',
     )
+  if (aiFeatureId in data.features) {
+    for (const [name, content] of Object.entries(aiFeatureFiles)) {
+      const full = await checkedPath(root, '.devcontainer/builder-ai-tools/' + name, true)
+      if ((await exists(full)) && (await readOptional(full)) !== content)
+        throw new Error('AI Feature has custom content: ' + name)
+    }
+  }
   await atomicWrite(configFull, text)
   if (data.base === 'dockerfile')
     await atomicWrite(
@@ -448,6 +471,12 @@ async function createProjectInternal(data: WizardData, op: Operation): Promise<P
   const auxPath = await checkedPath(root, '.devcontainer/builder.json', true)
   if (!(await exists(auxPath)))
     await atomicWrite(auxPath, JSON.stringify({ version: 1, tests: [] }, null, 2) + '\n')
+  if (aiFeatureId in data.features) {
+    for (const [name, content] of Object.entries(aiFeatureFiles)) {
+      const full = await checkedPath(root, '.devcontainer/builder-ai-tools/' + name, true)
+      if (!(await exists(full))) await atomicWrite(full, content)
+    }
+  }
   const ignore = await checkedPath(root, '.dockerignore', true)
   if (!(await exists(ignore)))
     await atomicWrite(ignore, '.git\nnode_modules\n.env\n.env.*\n!.env.example\n*.pem\n*.key\n')

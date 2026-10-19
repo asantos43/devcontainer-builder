@@ -58,3 +58,27 @@ it('normalizes Podman absolute paths into the portable backup prefix', async () 
   await normalizeVolumeArchive(source, createWriteStream(file))
   await expect(validateVolumeArchive(file)).resolves.toBeUndefined()
 })
+
+it('accepts internal symbolic/hard links and POSIX metadata', async () => {
+  const file = path.join(root, 'links.tar'),
+    tar = pack()
+  tar.entry(
+    { name: 'data/file', mode: 0o751, uid: 1000, gid: 1000, mtime: new Date('2024-01-01') },
+    'data',
+  )
+  tar.entry({ name: 'data/nested', type: 'directory' })
+  tar.entry({ name: 'data/nested/symbolic', type: 'symlink', linkname: '../file' })
+  tar.entry({ name: 'data/hard', type: 'link', linkname: 'data/file' })
+  tar.finalize()
+  await pipeline(tar, createWriteStream(file))
+  await expect(validateVolumeArchive(file)).resolves.toBeUndefined()
+})
+it('rejects chained link escapes and cyclic links', async () => {
+  const file = path.join(root, 'links.tar'),
+    tar = pack()
+  tar.entry({ name: 'data/a', type: 'symlink', linkname: 'b' })
+  tar.entry({ name: 'data/b', type: 'symlink', linkname: 'a' })
+  tar.finalize()
+  await pipeline(tar, createWriteStream(file))
+  await expect(validateVolumeArchive(file)).rejects.toThrow('cyclic')
+})

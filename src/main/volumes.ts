@@ -3,9 +3,12 @@ import { dialog } from 'electron'
 import fs from 'node:fs/promises'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { pipeline } from 'node:stream/promises'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
+import { readSecret } from './secrets'
 import { extract, pack } from 'tar-stream'
 import path from 'node:path'
-import type { Readable, Writable } from 'node:stream'
+import type { Readable, Writable, Duplex } from 'node:stream'
 import type Docker from 'dockerode'
 import { docker } from './engine'
 import { tracked, type Operation } from './operations'
@@ -68,32 +71,85 @@ async function helper<T>(
 }
 export async function validateVolumeArchive(filename: string): Promise<void> {
   const parser = extract()
-  let entries = 0
+  const entries = new Map<string, { type: string; linkname: string }>()
   parser.on('entry', (header, stream, next) => {
-    stream.on('error', () => {
-      /* parser/pipeline owns the error result */
-    })
+    stream.on('error', () => {})
     const name = header.name.replace(/\/$/, '')
     const valid =
       (name === 'data' || name.startsWith('data/')) &&
-      !name.split('/').some((p) => p === '..' || p === '.') &&
+      !name.split('/').some((p) => p === '..' || p === '.' || !p) &&
       !name.includes('\\') &&
       !/[\0\r\n]/.test(name)
-    // Backup restoration intentionally accepts only files and directories; links and devices can escape a volume.
-    if (!valid || !['file', 'directory'].includes(header.type || 'file') || ++entries > 1_000_000) {
+    const type = header.type || 'file'
+    if (
+      !valid ||
+      !['file', 'directory', 'symlink', 'link'].includes(type) ||
+      entries.has(name) ||
+      entries.size >= 1_000_000
+    ) {
       stream.resume()
       parser.destroy(
         new Error(
-          'Unsafe archive entry. Only regular files and directories under data/ are accepted.',
+          'Unsafe archive entry. Only files, directories and safe links under data/ are accepted.',
         ),
       )
       return
     }
+    const linkname = header.linkname || ''
+    if (
+      ['symlink', 'link'].includes(type) &&
+      (!linkname ||
+        linkname.startsWith('/') ||
+        linkname.includes('\\') ||
+        /[\0\r\n]/.test(linkname) ||
+        /^[a-z]:/i.test(linkname))
+    ) {
+      stream.resume()
+      parser.destroy(new Error('Unsafe archive link target.'))
+      return
+    }
+    entries.set(name, { type, linkname })
     stream.on('end', next)
     stream.resume()
   })
   await pipeline(createReadStream(filename), parser)
-  if (!entries) throw new Error('The volume backup is empty or invalid.')
+  if (!entries.size) throw new Error('The volume backup is empty or invalid.')
+  function resolve(name: string): string {
+    const pending = name.split('/'),
+      result: string[] = []
+    let hops = 0
+    while (pending.length) {
+      const part = pending.shift()!
+      if (!part || part === '.') continue
+      if (part === '..') {
+        if (result.length <= 1) throw new Error('Unsafe archive link escapes data/.')
+        result.pop()
+        continue
+      }
+      const candidate = [...result, part].join('/'),
+        link = entries.get(candidate)
+      if (link?.type === 'symlink' || link?.type === 'link') {
+        if (++hops > 40) throw new Error('Unsafe cyclic or excessive archive link chain.')
+        if (link.type === 'link') result.length = 0
+        pending.unshift(...link.linkname.split('/'))
+      } else result.push(part)
+      if (result.length && result[0] !== 'data')
+        throw new Error('Unsafe archive link escapes data/.')
+    }
+    if (result[0] !== 'data') throw new Error('Unsafe archive link escapes data/.')
+    return result.join('/')
+  }
+  const regular = new Set<string>()
+  for (const [name, entry] of entries) {
+    const actual = resolve(name)
+    if (entry.type === 'file') {
+      if (regular.has(actual)) throw new Error('Unsafe duplicate effective file path in archive.')
+      regular.add(actual)
+    }
+  }
+  for (const [name, entry] of entries)
+    if (entry.type === 'link' && !regular.has(resolve(name)))
+      throw new Error('Unsafe hard link must reference an archived regular file.')
 }
 export async function backupVolume(name: string): Promise<string | null> {
   return exclusive(name, async () => {
@@ -163,13 +219,33 @@ export async function restoreVolume(name: string): Promise<string | null> {
     }
   })
 }
-export async function cloneVolume(name: string, url: string, branch: string): Promise<string> {
+export async function cloneVolume(
+  name: string,
+  url: string,
+  branch: string,
+  credential = '',
+): Promise<string> {
   return exclusive(name, async () => {
     const reference = new URL(url)
     if (reference.protocol !== 'https:' || reference.username || reference.password)
-      throw new Error(
-        'Volume cloning currently accepts public HTTPS repositories without embedded credentials.',
-      )
+      throw new Error('Use an HTTPS repository URL without embedded credentials.')
+    let token = ''
+    if (credential === 'github-cli') {
+      if (reference.hostname !== 'github.com')
+        throw new Error('GitHub CLI credentials can only be forwarded to github.com.')
+      try {
+        token = (
+          await promisify(execFile)('gh', ['auth', 'token', '--hostname', 'github.com'], {
+            maxBuffer: 32000,
+            windowsHide: true,
+          })
+        ).stdout.trim()
+      } catch {
+        throw new Error('Sign in with gh auth login before cloning a private GitHub repository.')
+      }
+    } else if (credential) token = await readSecret(credential)
+    if (credential && (!token || /[\r\n\0]/.test(token)))
+      throw new Error('Invalid repository credential.')
     const client = await docker()
     await tracked('git', async (op) => {
       await ensureImage(client, op)
@@ -179,29 +255,66 @@ export async function cloneVolume(name: string, url: string, branch: string): Pr
         Cmd: [
           '/bin/sh',
           '-c',
-          'apk add --no-cache git ca-certificates && exec git clone --branch "$1" -- "$2" /data/repository',
+          token
+            ? `set -eu
+apk add --no-cache git ca-certificates
+umask 077
+IFS= read -r credential
+printf '%s' "$credential" > /run/dcb/token
+unset credential
+cat > /tmp/dcb-askpass <<'ASKPASS'
+#!/bin/sh
+case "$1" in *Username*) printf 'x-access-token';; *) cat /run/dcb/token;; esac
+ASKPASS
+chmod 700 /tmp/dcb-askpass
+trap 'rm -f /run/dcb/token /tmp/dcb-askpass' EXIT
+GIT_TERMINAL_PROMPT=0 GIT_ASKPASS=/tmp/dcb-askpass git -c credential.helper= -c core.hooksPath=/dev/null -c http.followRedirects=false clone --branch "$1" -- "$2" /data/repository`
+            : 'apk add --no-cache git ca-certificates && exec git -c core.hooksPath=/dev/null clone --branch "$1" -- "$2" /data/repository',
           'sh',
           branch || 'main',
           url,
         ],
+        OpenStdin: Boolean(token),
+        StdinOnce: true,
+        AttachStdin: Boolean(token),
         Labels: { 'devcontainer-builder.helper': 'clone' },
-        HostConfig: { Mounts: [{ Type: 'volume', Source: name, Target: '/data' }] },
+        HostConfig: {
+          Mounts: [{ Type: 'volume', Source: name, Target: '/data' }],
+          Tmpfs: { '/run/dcb': 'rw,noexec,nosuid,size=64k,mode=0700' },
+        },
       })
       const abort = () => {
         void container.kill().catch(() => {})
       }
       op.signal.addEventListener('abort', abort, { once: true })
+      let input: Duplex | undefined
       try {
+        input = token
+          ? ((await container.attach({
+              hijack: true,
+              stream: true,
+              stdin: true,
+              stdout: false,
+              stderr: false,
+            })) as Duplex)
+          : undefined
+        input?.on('error', () => {})
+        input?.resume()
+        op.signal.throwIfAborted()
         await container.start()
+        // Keep the upgraded stdin connection alive until the helper finishes reading it.
+        // Closing an HTTP request early can discard input before apk/git starts.
+        if (input) input.write(token + '\n')
         const result = await container.wait()
         const logs = await container.logs({ stdout: true, stderr: true })
-        op.output(logs.toString())
+        op.output(token ? logs.toString().split(token).join('[redacted]') : logs.toString())
         op.signal.throwIfAborted()
         if (result.StatusCode !== 0)
           throw new Error(
             'Clone failed; inspect the output. Partial data remains in the new volume.',
           )
       } finally {
+        input?.destroy()
         op.signal.removeEventListener('abort', abort)
         await container.remove({ force: true, v: false })
       }
@@ -227,7 +340,17 @@ export async function normalizeVolumeArchive(
       const name = header.name.startsWith('/')
         ? 'data' + header.name
         : header.name.replace(/^\.\//, '')
-      await pipeline(entry, archive.entry({ ...header, name }), { signal })
+      await pipeline(
+        entry,
+        archive.entry({
+          ...header,
+          name,
+          ...(header.type === 'link' && header.linkname && !header.linkname.startsWith('data/')
+            ? { linkname: 'data/' + header.linkname.replace(/^\/+/, '') }
+            : {}),
+        }),
+        { signal },
+      )
     }
     archive.finalize()
   })()

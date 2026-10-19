@@ -10,6 +10,10 @@ import { getSettings, saveSettings } from './settings'
 import { settingsSchema } from '../shared/settings'
 import * as maintenance from './maintenance'
 import * as volumes from './volumes'
+import * as library from './library'
+import * as vault from './secrets'
+import { importThemes, listImportedThemes } from './themes'
+import { systemRequirements } from './requirements'
 import { automaticUpdateCheck } from './maintenance'
 import { closeEngineConnections } from './engine'
 import { cancel, cancelAll, hasActiveOperations, run, setEventSink } from './operations'
@@ -101,6 +105,46 @@ function register(win: BrowserWindow): void {
     })
   }
   const none = z.undefined()
+  handle('extensions:list', none, listImportedThemes)
+  handle('extensions:import', none, importThemes)
+  handle('library:list', none, library.listTemplates)
+  handle(
+    'library:preview',
+    z.object({
+      kind: z.enum(['folder', 'zip', 'git', 'catalog', 'saved']),
+      reference: short.optional(),
+      revision: short.optional(),
+      subfolder: short.optional(),
+    }),
+    library.previewSource,
+  )
+  handle('library:fromProject', id, library.previewProject)
+  handle('library:destination', id, library.prepareDestination)
+  handle(
+    'library:apply',
+    z.object({
+      id,
+      destination: id,
+      config: short,
+      options: z.record(short).refine((v) => Object.keys(v).length <= 100),
+    }),
+    (v) => library.applyPreview(v.id, v.destination, v.config, v.options),
+  )
+  handle('library:save', z.object({ id, name: short.min(1).max(100), description: short }), (v) =>
+    library.saveTemplate(v.id, v.name, v.description),
+  )
+  handle(
+    'library:publish',
+    z.object({
+      id,
+      registry: z.string().regex(/^[a-z0-9][a-z0-9.:-]*$/),
+      namespace: z
+        .string()
+        .regex(/^[a-z0-9][a-z0-9_./-]*$/)
+        .refine((v) => !v.split('/').includes('..')),
+    }),
+    (v) => library.publishTemplate(v.id, v.registry, v.namespace),
+  )
   handle('settings:get', none, getSettings)
   handle('settings:save', settingsSchema, async (value) => {
     const previous = await getSettings()
@@ -137,7 +181,24 @@ function register(win: BrowserWindow): void {
     return projects.loadProject(p.root, p.configPath, p.id)
   })
   handle('projects:changed', id, projects.hasChanged)
-  handle('system:capabilities', none, runtime.capabilities)
+  handle('system:capabilities', none, async () => [
+    ...(await systemRequirements()),
+    ...(await runtime.capabilities()),
+  ])
+  handle('vault:list', none, vault.listSecrets)
+  handle('vault:store', z.object({ name: short, value: z.string().max(16000) }), (v) =>
+    vault.storeSecret(v.name, v.value),
+  )
+  handle('vault:remove', short, vault.removeSecret)
+  handle(
+    'vault:registry',
+    z.object({
+      name: short,
+      server: z.string().regex(/^[a-zA-Z0-9][a-zA-Z0-9.:-]*$/),
+      username: short.min(1),
+    }),
+    async (v) => maintenance.registryLogin(v.server, v.username, await vault.readSecret(v.name)),
+  )
   handle('system:contexts', z.enum(['docker', 'podman']).optional(), runtime.contexts)
   handle('git:info', id, async (value) => {
     const p = projects.projectFor(value)
@@ -330,15 +391,22 @@ function register(win: BrowserWindow): void {
     z.object({
       name: volumeName,
       url: z.string().url().max(4096),
+      credential: short.optional(),
       branch: z
         .string()
         .regex(/^[a-zA-Z0-9][a-zA-Z0-9_./-]*$/)
         .max(255),
     }),
-    (value) => volumes.cloneVolume(value.name, value.url, value.branch),
+    (value) => volumes.cloneVolume(value.name, value.url, value.branch, value.credential),
   )
-  handle('maintenance:scan', z.object({ id, kind: z.enum(['sbom', 'vulnerabilities']) }), (value) =>
-    maintenance.scan(value.id, value.kind),
+  handle(
+    'maintenance:scan',
+    z.object({
+      id,
+      kind: z.enum(['sbom', 'vulnerabilities']),
+      target: z.enum(['filesystem', 'image']).default('filesystem'),
+    }),
+    (value) => maintenance.scan(value.id, value.kind, value.target),
   )
   handle('maintenance:update', z.enum(['check', 'download', 'install']), maintenance.update)
   handle('runtime:start', id, runtime.start)
@@ -428,7 +496,18 @@ async function createWindow(): Promise<void> {
 }
 app
   .whenReady()
-  .then(createWindow)
+  .then(async () => {
+    if (process.env.DCB_E2E_USER_DATA && !app.isPackaged)
+      app.setPath('userData', process.env.DCB_E2E_USER_DATA)
+    const problems = (await systemRequirements())
+      .filter((item) => !item.ok)
+      .map((item) => item.detail)
+    if (problems.length) {
+      dialog.showErrorBox('Unsupported system / Sistema incompatível', problems.join('\n'))
+      throw new Error('System requirements are not satisfied.')
+    }
+    await createWindow()
+  })
   .then(automaticUpdateCheck)
   .catch((error) => {
     console.error(error)

@@ -166,3 +166,32 @@ it('allows invalid Compose references to open for source repair', async () => {
   await fs.writeFile(path.join(root, '.devcontainer/devcontainer.json'), '{"dockerComposeFile":42}')
   expect((await loadProject(root)).configText).toContain('42')
 })
+
+it('writes a selected AI Feature without changing production Dockerfile comments', async () => {
+  const { patchConfig } = await import('../src/shared/config')
+  const project = await loadProject(root)
+  const saved = await saveProject({
+    ...project,
+    configText: patchConfig(project.configText, ['features', './builder-ai-tools'], {
+      claude: true,
+      codex: true,
+      opencode: true,
+    }),
+  })
+  expect(saved.dockerfile).toBe(project.dockerfile)
+  const metadata = JSON.parse(
+    await fs.readFile(
+      path.join(root, '.devcontainer/builder-ai-tools/devcontainer-feature.json'),
+      'utf8',
+    ),
+  )
+  expect(metadata.dependsOn['ghcr.io/devcontainers/features/node:1'].version).toBe('22')
+  await fs.writeFile(
+    path.join(root, '.devcontainer/builder-ai-tools/install.sh'),
+    '# custom implementation\n',
+  )
+  await expect(saveProject(saved)).rejects.toThrow('custom content')
+  expect(
+    await fs.readFile(path.join(root, '.devcontainer/builder-ai-tools/install.sh'), 'utf8'),
+  ).toContain('# custom implementation')
+})

@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, Check, FolderOpen, Search, Star, Container } fro
 import { createConfig, features, templates, wizardDefaults } from '../../shared/config'
 import type { ImagePage, Mount, Project, WizardData } from '../../shared/types'
 import { Field, KeyValues, Modal, Notice, useT } from './ui'
+import { aiFeatureId } from '../../shared/ai-tools'
 
 export function ImagePicker({ value, change }: { value: string; change: (value: string) => void }) {
   const t = useT()
@@ -254,6 +255,50 @@ export function FeaturePicker({
   const [custom, setCustom] = useState('')
   return (
     <div>
+      <fieldset className="section">
+        <legend>{t('AI coding tools', 'Assistentes de programação')}</legend>
+        {(['claude', 'codex', 'opencode'] as const).map((tool, index) => {
+          const options = (value[aiFeatureId] ?? {}) as Record<string, unknown>
+          const label = ['Claude Code', 'Codex CLI', 'OpenCode'][index]
+          return (
+            <div key={tool} className="grid-two">
+              <label className="checkbox">
+                <input
+                  type="checkbox"
+                  checked={options[tool] === true}
+                  onChange={(e) => {
+                    const next = { ...options, [tool]: e.target.checked }
+                    const all: Record<string, unknown> = { ...value, [aiFeatureId]: next }
+                    if (!['claude', 'codex', 'opencode'].some((key) => next[key] === true))
+                      delete all[aiFeatureId]
+                    change(all)
+                  }}
+                />
+                {label}
+              </label>
+              {options[tool] === true && (
+                <Field label={label + ' · ' + t('Version', 'Versão')}>
+                  <input
+                    value={String(options[tool + 'Version'] ?? 'latest')}
+                    onChange={(e) =>
+                      change({
+                        ...value,
+                        [aiFeatureId]: { ...options, [tool + 'Version']: e.target.value },
+                      })
+                    }
+                  />
+                </Field>
+              )}
+            </div>
+          )
+        })}
+        <small>
+          {t(
+            'Installed at build time through a local Feature and Node.js 22. Sign in inside the container after startup.',
+            'Instalados durante o build por uma Feature local com Node.js 22. Autentique dentro do container após iniciar.',
+          )}
+        </small>
+      </fieldset>
       <div className="feature-grid">
         {features.map((feature) => (
           <label
@@ -308,8 +353,10 @@ export function FeaturePicker({
 export function Wizard({
   close,
   created,
+  openLibrary,
 }: {
   close: () => void
+  openLibrary?: () => void
   created: (project: Project) => void
 }) {
   const t = useT()
@@ -384,6 +431,16 @@ export function Wizard({
         if (!busy) close()
       }}
     >
+      {openLibrary && (
+        <div className="modal-body">
+          <button onClick={openLibrary}>
+            {t(
+              'Use a template or import an existing Dev Container',
+              'Usar um template ou importar um Dev Container existente',
+            )}
+          </button>
+        </div>
+      )}
       <div className="wizard">
         <aside className="wizard-steps">
           <span className="eyebrow">GET STARTED</span>

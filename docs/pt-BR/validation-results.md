@@ -4,29 +4,29 @@
 
 Validação local em Linux x64 com Node.js 22.23.1, Electron 44.9.0 e Docker Engine 29.9.1.
 
-| Verificação                                                          | Resultado                                                       |
-| -------------------------------------------------------------------- | --------------------------------------------------------------- |
-| TypeScript, ESLint, Prettier                                         | Aprovados                                                       |
-| Testes de domínio/arquivos e regressão de runtime                    | 37 aprovados                                                    |
-| Cenários Electron/Playwright com Docker e GitHub privado habilitados | 5 aprovados                                                     |
-| Build CLI, hooks, workspace, volume e exec Dockerode                 | Aprovados                                                       |
-| Feature oficial Docker do host com usuário não root                  | Aprovada                                                        |
-| Shell interativo, remoteEnv e desconexão ao parar                    | Aprovados                                                       |
-| ZIP exportado e reconstruído em outra pasta                          | Aprovado                                                        |
-| Pesquisa real de imagens e tags Docker Hub                           | Aprovada                                                        |
-| Geração AppImage e DEB Linux                                         | Aprovada                                                        |
-| Janela empacotada Linux e CLI incluída                               | Aprovadas                                                       |
-| npm audit, incluindo dependências distribuídas                       | Sem vulnerabilidades conhecidas                                 |
-| macOS Intel / Apple Silicon                                          | Bloqueado antes de iniciar por cobrança/limite de gastos GitHub |
-| Execução Windows e validação do instalador                           | Pendente de máquina Windows                                     |
-| Assinatura Windows e assinatura/notarização macOS                    | Pendentes de credenciais                                        |
-| Criação/push remoto pelo aplicativo                                  | Pendente de repositório dedicado de teste                       |
+| Verificação                                                          | Resultado                                                              |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| TypeScript, ESLint, Prettier                                         | Aprovados                                                              |
+| Testes de domínio/arquivos e regressão de runtime                    | 113 aprovados                                                          |
+| Cenários Electron/Playwright com Docker e GitHub privado habilitados | 23 cenários distintos aprovados após repetição direcionada; 1 ignorado |
+| Build CLI, hooks, workspace, volume e exec Dockerode                 | Aprovados                                                              |
+| Feature oficial Docker do host com usuário não root                  | Aprovada                                                               |
+| Shell interativo, remoteEnv e desconexão ao parar                    | Aprovados                                                              |
+| ZIP exportado e reconstruído em outra pasta                          | Aprovado                                                               |
+| Pesquisa real de imagens e tags Docker Hub                           | Aprovada                                                               |
+| Geração AppImage e DEB Linux                                         | Aprovada                                                               |
+| Janela empacotada Linux e CLI incluída                               | Aprovadas                                                              |
+| npm audit, incluindo dependências distribuídas                       | Sem vulnerabilidades conhecidas                                        |
+| macOS Intel / Apple Silicon                                          | Bloqueado antes de iniciar por cobrança/limite de gastos GitHub        |
+| Execução Windows e validação do instalador                           | Pendente de máquina Windows                                            |
+| Assinatura Windows e assinatura/notarização macOS                    | Pendentes de credenciais                                               |
+| Criação/push remoto pelo aplicativo                                  | Criação privada, commit selecionado e push aprovados                   |
 
 O workflow é exclusivo para macOS. O GitHub informou falha de pagamentos recentes ou necessidade de aumentar o limite de gastos. Nenhum resultado de teste/build macOS é declarado. Após resolver a cobrança, execute novamente o workflow. Linux e Windows permanecem locais.
 
 O MCP Context7 foi registrado globalmente e o OAuth foi concluído. O MCP Playwright e seu navegador foram instalados, com navegação real para `about:blank` aprovada. São ferramentas de desenvolvimento separadas das dependências de teste do aplicativo.
 
-A implementação está na branch `feat/devcontainer-workbench`, no PR #1, sem merge automático. Artefatos ficam na pasta local ignorada `release/`; nenhuma release foi publicada.
+A implementação inicial foi entregue no PR #1 e depois recebeu merge pelo mantenedor. Evoluções usam branches e PRs próprios, sem merge automático. Artefatos ficam na pasta local ignorada `release/`; nenhuma release foi publicada.
 
 ## Temas, Podman e extensões do aplicativo
 
@@ -42,3 +42,18 @@ Validação local no Fedora Linux x64 com Docker 29.9.1, Podman 5.8.9, CLI 0.89.
 - AppImage/DEB Linux e aplicativo empacotado passaram, incluindo CLI e carregamento do atualizador. A exigência de credenciais para releases privados foi verificada sem consultar releases; nada foi publicado.
 
 Continuam pendentes: SSH/TLS em servidores reais, Windows/PowerShell nativos, Podman Machine, assinatura/notarização e instalação de atualização assinada. Login real em registry com credenciais do usuário não foi executado; stdin e remoção de secrets da saída têm teste de regressão de subprocesso. Os guias e TODO registram essas limitações.
+
+## Implementação das funcionalidades restantes
+
+Nesta branch passaram TypeScript, ESLint, formatação e 113 testes em 14 arquivos. A execução completa do Electron percorreu 24 cenários: 22 passaram, o clone autenticado em volume falhou e a criação remota condicionada à permissão de exclusão foi ignorada. Após corrigir a conexão stdin, o clone privado e o tema VSIX passaram na repetição direcionada, incluindo importar o tema antes de abrir o Monaco pela primeira vez. São 23 cenários distintos aprovados; isso não representa execução nativa em Windows/macOS.
+
+- Wizard com paleta/opções, revisão de pasta/ZIP, conflitos, snapshots reutilizáveis, preservação de comentários e importação sem hooks passaram no Electron. Checkout Git local por revisão/subpasta, limites e rejeições de arquivos e construção do comando de publicação OCI têm cobertura de regressão.
+- Um build Docker real instalou Claude Code, Codex CLI e OpenCode pela Feature local gerada. Os três comandos de versão funcionaram como usuário de desenvolvimento sem root; não houve login em provedores.
+- Docker e Podman rootless passaram em scripts, shell e backup/restauração TAR com links simbólicos relativos, hard links e permissões de execução. O clone GitHub privado em volume passou sem gravar a credencial encaminhada na configuração Git.
+- Exportação/análise de imagem pelo Trivy gerou CycloneDX real sem iniciar o container de teste nem executar hooks. As verificações existentes de SBOM/vulnerabilidades em disco também passaram.
+- O diagnóstico nativo de requisitos Linux passou. Os limites de plataforma e as exigências de assinatura foram testados com entradas simuladas, incluindo o alvo Windows empacotado a partir de Linux.
+- AppImage e DEB foram gerados com dependências nativas declaradas. Janela empacotada, CLI incluída e exigência de credenciais do atualizador privado passaram. A auditoria npm encontrou zero vulnerabilidades conhecidas.
+- A consulta ao armazenamento nativo Linux indicou criptografia indisponível com backend `basic_text`; nenhum fallback sem criptografia foi habilitado e nenhuma credencial foi salva. Serialização, criptografia/descriptografia pelo adaptador e rejeições têm cobertura unitária. O teste real de Secret Service/KWallet, Keychain macOS e DPAPI Windows depende desses ambientes.
+- Publicação OCI real, login real em registry, instaladores/motores nativos, assinatura/notarização, motores remotos e entrega de atualização assinada não foram executados. A exclusão do repositório de validação arquivado foi tentada novamente e retornou HTTP 403 com a credencial GitHub atual.
+
+Artefatos Linux ficam em `release/`, ignorado pelo Git; nenhum release do aplicativo ou template OCI foi publicado. O único workflow CI continua sendo macOS.

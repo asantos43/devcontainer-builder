@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
 import { createRequire } from 'node:module'
+import './check-release-signing.mjs'
 const require = createRequire(import.meta.url)
 const { build, Platform, Arch } = require('electron-builder')
 if (process.platform !== 'darwin') throw new Error('Run macOS packaging on a macOS machine.')

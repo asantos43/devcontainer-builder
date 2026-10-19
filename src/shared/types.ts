@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
+import type { ImportedTheme } from './imported-themes'
+import type { ImportSource, TemplatePreview, ImportDestination } from './catalog'
 export type Locale = 'en' | 'pt-BR'
 export type Config = Record<string, unknown>
 export interface TestCommand {
@@ -132,6 +134,27 @@ export interface Capability {
   detail: string
 }
 export interface BuilderAPI {
+  extensions: { list(): Promise<ImportedTheme[]>; import(): Promise<ImportedTheme[]> }
+  vault: {
+    list(): Promise<string[]>
+    store(name: string, value: string): Promise<void>
+    remove(name: string): Promise<void>
+    registry(name: string, server: string, username: string): Promise<void>
+  }
+  library: {
+    list(): Promise<{ id: string; name: string; description: string }[]>
+    preview(source: ImportSource): Promise<TemplatePreview | null>
+    fromProject(id: string): Promise<TemplatePreview>
+    destination(id: string): Promise<ImportDestination | null>
+    apply(
+      id: string,
+      destination: string,
+      config: string,
+      options: Record<string, string>,
+    ): Promise<Project>
+    save(id: string, name: string, description: string): Promise<string>
+    publish(id: string, registry: string, namespace: string): Promise<string>
+  }
   settings: { get(): Promise<Settings>; save(value: Settings): Promise<Settings> }
   maintenance: {
     registryLogin(server: string, username: string, password: string): Promise<void>
@@ -141,10 +164,14 @@ export interface BuilderAPI {
     featureLock(id: string): Promise<string>
     saveFeatureLock(id: string, content: string): Promise<void>
     compare(): Promise<string | null>
-    cloneVolume(name: string, url: string, branch: string): Promise<string>
+    cloneVolume(name: string, url: string, branch: string, credential?: string): Promise<string>
     backupVolume(name: string): Promise<string | null>
     restoreVolume(name: string): Promise<string | null>
-    scan(id: string, kind: 'sbom' | 'vulnerabilities'): Promise<string>
+    scan(
+      id: string,
+      kind: 'sbom' | 'vulnerabilities',
+      target?: 'filesystem' | 'image',
+    ): Promise<string>
     update(action: 'check' | 'download' | 'install'): Promise<string>
   }
   projects: {
