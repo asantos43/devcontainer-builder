@@ -10,7 +10,7 @@ import { helperScripts } from '../src/shared/helpers'
 const exec = promisify(execFile)
 let root: string
 beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), "dcb space's-"))
+  root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "dcb space's-")))
 })
 afterEach(async () => {
   await fs.rm(root, { recursive: true, force: true })
@@ -43,7 +43,9 @@ describe('generated helper scripts', () => {
         DOCKER_HOST: '',
         DCB_TEST_LOG: log,
       }
-      await exec('sh', [path.join(root, 'devcontainer-start.sh'), '--remove-existing-container'], {
+      const alias = path.join(root, "entry's link")
+      await fs.symlink(root, alias, 'dir')
+      await exec('sh', [path.join(alias, 'devcontainer-start.sh'), '--remove-existing-container'], {
         env,
       })
       await exec(

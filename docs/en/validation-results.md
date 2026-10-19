@@ -57,3 +57,9 @@ On this branch, TypeScript, ESLint, formatting and 113 tests across 14 test file
 - Actual OCI publication, live registry authentication, native installers/engines, signing/notarization, remote engines and signed update delivery were not performed. Deleting the archived validation repository was retried and returned HTTP 403 with the current GitHub credential.
 
 Linux artifacts remain in ignored `release/`; no application release or OCI template was published. The macOS workflow remains the only CI workflow.
+
+## Public repository and macOS validation
+
+After the repository became public, the Intel and Apple Silicon runners started. The first run exposed a helper-test /var versus /private/var path assertion; canonical roots and symlink entry-point coverage corrected it. Both architectures passed the complete [follow-up workflow](https://github.com/asantos43/devcontainer-builder/actions/runs/39190217041): 115 domain tests passed and one Linux-only test skipped, plus 12 Electron scenarios passed and 12 external-integration opt-ins skipped per architecture. Both generated unsigned DMG/ZIP packages and passed packaged window, CLI 0.89.0 and updater guard checks.
+
+The public-update follow-up passed 116 tests and 12 Electron scenarios locally on Linux, with 12 integration opt-ins skipped. Linux AppImage/DEB packages and the packaged updater without a GitHub token also passed. The 0.1.0 public preview notes record signing and native engine limitations; historical private-repository/billing outcomes above describe earlier runs.

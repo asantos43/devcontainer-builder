@@ -4,6 +4,8 @@ All notable changes are documented here.
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-18
+
 ### Added
 
 - Searchable development template palette, reusable project snapshots and local/remote Git template sources with revision/subfolder selection.
@@ -41,6 +43,10 @@ All notable changes are documented here.
 - Domain, filesystem, Electron UI and opt-in Docker integration tests.
 
 ### Fixed
+
+- Canonicalize helper-test paths and exercise symlink entry points on macOS.
+- Apply macOS production signing requirements when packaging with an architecture argument.
+- Use public GitHub release metadata without requiring repository credentials.
 
 - Remove the unintended outline around configuration navigation caused by a Tailwind utility class name collision.
 - Synchronize Start/Stop availability with the managed container state on project open, engine changes, window focus and periodic refresh; block conflicting actions during runtime operations.

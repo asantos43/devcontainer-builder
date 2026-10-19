@@ -114,7 +114,7 @@ Projetos antigos podem criar os scripts ausentes pela aba Repositório; conteúd
 
 ## Atualizações do aplicativo e artefatos
 
-Aplicativos empacotados consultam GitHub Releases; habilite a consulta automática ou use Verificar atualizações. Baixar e reiniciar/instalar são ações explícitas. Enquanto o repositório for privado, inicie com `GH_TOKEN` ou `GITHUB_TOKEN` com acesso aos releases. O token não é salvo nas configurações do projeto nem embutido nos metadados. `npm run dev` não atualiza a própria instalação.
+Aplicativos empacotados consultam GitHub Releases; habilite a consulta automática ou use Verificar atualizações. Baixar e reiniciar/instalar são ações explícitas. Este repositório público não exige token GitHub para consultar releases. Nenhum token é salvo nas configurações do projeto nem embutido nos metadados. `npm run dev` não atualiza a própria instalação.
 
 Builds locais não publicam releases. macOS gera DMG, ZIP e metadados; a publicação de artefatos/metadados assinados é manual após revisão. A consulta automática começa desabilitada. A validação completa depende de release publicado, assinatura/notarização e máquinas das plataformas indicadas no TODO.
 

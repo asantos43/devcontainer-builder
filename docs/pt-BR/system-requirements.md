@@ -23,7 +23,7 @@ O aplicativo empacotado inclui Electron, React, Monaco, xterm e a CLI de Dev Con
 - Clone privado GitHub em volume: autenticação da GitHub CLI ou token salvo selecionado explicitamente. A credencial vai por stdin a um helper descartável e fica em tmpfs; não é gravada no repositório nem na configuração Git.
 - Relatórios de dependências/imagens: [Trivy](https://trivy.dev/docs/latest/) instalado no host. Ele pode baixar bancos de vulnerabilidades. A análise de imagem também usa a CLI do motor configurado para salvar a imagem do container gerenciado.
 - Credenciais salvas: Windows DPAPI, macOS Keychain ou Linux Secret Service/KWallet. Criptografia indisponível e o fallback Linux `basic_text` são recusados.
-- Atualizações: aplicativo empacotado e release publicado; releases privados também exigem token GitHub no processo.
+- Atualizações: aplicativo empacotado e release publicado. Este repositório é público; nenhum token GitHub é exigido.
 
 Execute `npm run check:system` e use **Configurações → Verificar ferramentas e motor** para os diagnósticos por operação. O startup bloqueia SO/arquitetura incompatíveis, RAM/espaço insuficientes e libc Linux não suportada. Operações com containers explicam ferramentas ausentes, versão do motor ou exigência de containers Linux. Bibliotecas nativas podem falhar antes de o Electron executar JavaScript; por isso o gerenciador DEB e os metadados do bundle/instalador fazem parte da verificação.
 

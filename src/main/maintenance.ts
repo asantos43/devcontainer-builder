@@ -243,8 +243,7 @@ async function updater() {
       provider: 'github',
       owner: 'asantos43',
       repo: 'devcontainer-builder',
-      private: true,
-      token: process.env.GH_TOKEN || process.env.GITHUB_TOKEN,
+      private: false,
     })
     updater.on('error', () => {
       /* errors are returned to the invoking action */
@@ -258,10 +257,6 @@ let updateAvailable = false
 export async function update(action: 'check' | 'download' | 'install'): Promise<string> {
   const service = await updater()
   if (action === 'check') {
-    if (!process.env.GH_TOKEN && !process.env.GITHUB_TOKEN)
-      throw new Error(
-        'This private repository requires GH_TOKEN or GITHUB_TOKEN to check releases.',
-      )
     const result = await service.checkForUpdates()
     updateAvailable = Boolean(result?.isUpdateAvailable)
     return updateAvailable ? `Available: ${result?.updateInfo.version}` : 'Up to date.'

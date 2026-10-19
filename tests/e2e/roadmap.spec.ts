@@ -15,7 +15,7 @@ import Docker from 'dockerode'
 let app: ElectronApplication, page: Page, root: string
 const errors: string[] = []
 test.beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), 'dcb-roadmap-'))
+  root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'dcb-roadmap-')))
   app = await electron.launch({
     args: ['out/main/index.js'],
     env: Object.fromEntries(
