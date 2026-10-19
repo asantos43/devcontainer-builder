@@ -28,6 +28,8 @@ Heredocs and unrecognized syntax remain editable in source mode. Visual edits ar
 
 The workspace mount uses `${localWorkspaceFolder}` and the configured internal path. Add host folders or named volumes, select their container destination and read-only mode. Volume creation is an explicit action. Removing a mount never deletes data. Paths containing commas are not supported by the mount-string representation. External mounts must be remapped when moving projects.
 
+Mount destinations and workspace paths may start with Dev Container variables, for example `target=${localWorkspaceFolder}`. Named volumes may also use variables such as `${devcontainerId}`. Templates remain unchanged in the saved configuration; the official CLI resolves variables and validates the effective values when starting or testing. See the [Dev Container variable reference](https://github.com/devcontainers/spec/blob/main/docs/specs/devcontainerjson-reference.md#variables-in-devcontainerjson).
+
 `forwardPorts` describes forwarding for compatible IDEs; the application does not implement IDE tunnels. Publish ports explicitly in `runArgs`, for example `["-p", "127.0.0.1:3000:3000"]`. Docker inspection shows actual bindings.
 
 ## Run, inspect and test

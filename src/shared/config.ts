@@ -30,12 +30,19 @@ export function patchConfig(text: string, path: (string | number)[], value: unkn
     }),
   )
 }
+function isContainerPathTemplate(value: string): boolean {
+  // The CLI resolves leading variables before validating the effective container path.
+  return value.startsWith('/') || /^\$\{[^{}]+\}/.test(value)
+}
 export function mountString(m: Mount): string {
   if ([m.source, m.target].some((s) => /[,\r\n]/.test(s)))
     throw new Error('Mount paths cannot contain commas or newlines.')
-  if (!m.source.trim() || !m.target.startsWith('/'))
+  if (!m.source.trim() || !isContainerPathTemplate(m.target))
     throw new Error('A mount needs a source and an absolute container path.')
-  if (m.type === 'volume' && !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(m.source))
+  if (
+    m.type === 'volume' &&
+    !/^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(m.source.replace(/\$\{[^{}]+\}/g, 'variable'))
+  )
     throw new Error('Invalid Docker volume name.')
   return `type=${m.type},source=${m.source},target=${m.target}${m.readOnly ? ',readonly' : ''}`
 }
@@ -92,7 +99,7 @@ export function validateConfig(text: string): Diagnostic[] {
       d.push({ level: 'error', message: `${key} must be a string.` })
   if (
     c.workspaceFolder &&
-    (typeof c.workspaceFolder !== 'string' || !c.workspaceFolder.startsWith('/'))
+    (typeof c.workspaceFolder !== 'string' || !isContainerPathTemplate(c.workspaceFolder))
   )
     d.push({ level: 'error', message: 'workspaceFolder must be an absolute container path.' })
   if (

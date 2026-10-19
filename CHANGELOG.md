@@ -33,6 +33,7 @@ All notable changes are documented here.
 
 ### Fixed
 
+- Accept Dev Container variable references in mount destinations, workspace paths and volume names without replacing the saved templates.
 - Keep terminal sessions mounted while application preferences are open.
 - Restore Monaco hover factories to application-lifetime services after temporary diff editors close.
 - Normalize Docker/Podman archive paths and start temporary volume helpers before API file access.
