@@ -74,14 +74,16 @@ try {
   assert.match(result.output, /\d+\.\d+\.\d+/)
   const updater = await window.evaluate(async () => {
     try {
-      await window.builder.maintenance.update('check')
-      return 'Unexpected network check'
+      await window.builder.maintenance.update('install')
+      return 'Unexpected install without download'
     } catch (error) {
       return String(error)
     }
   })
-  assert.match(updater, /requires GH_TOKEN or GITHUB_TOKEN/, updater)
-  console.log(`PASS: packaged updater loads and requires explicit private-release credentials`)
+  assert.match(updater, /Download an update before installing it/, updater)
+  console.log(
+    `PASS: packaged updater loads without a token and blocks installation before download`,
+  )
   console.log(`PASS: packaged window and CLI ${result.output.trim()}`)
 } finally {
   await application.close()

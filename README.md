@@ -59,7 +59,7 @@ Review Dockerfiles, host lifecycle commands and mounts before starting an import
 
 ## Project policy
 
-This repository starts private. After the initial commit, changes use a dedicated branch and a pull request into `main`; no automatic merges. The application does not impose this policy on users’ repositories.
+This repository is public. After the initial commit, changes use a dedicated branch and a pull request into `main`; no automatic merges. The application does not impose this policy on users’ repositories.
 
 Documentation is bilingual. `README.md`, TODO, CHANGELOG, CONTRIBUTING and SECURITY are English; only the README and guides have Portuguese counterparts. Agent instructions live in [AGENTS.md](AGENTS.md) and `.agents/`.
 

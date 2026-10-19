@@ -73,3 +73,19 @@ it('checks an explicit Windows release target even when packaging on Linux', () 
     }),
   ).toThrow(/CSC_LINK/)
 })
+
+it.each(['x64', 'arm64'])(
+  'checks macOS signing when the packaging argument is %s',
+  (architecture) => {
+    const script = readFileSync('scripts/check-release-signing.mjs', 'utf8')
+    expect(() =>
+      runInNewContext(script, {
+        process: {
+          platform: 'darwin',
+          env: { DCB_RELEASE: '1', CSC_LINK: 'fixture', CSC_KEY_PASSWORD: 'fixture' },
+          argv: ['node', 'package-macos.mjs', architecture],
+        },
+      }),
+    ).toThrow(/APPLE_ID/)
+  },
+)

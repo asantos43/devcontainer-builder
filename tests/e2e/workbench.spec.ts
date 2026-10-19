@@ -24,7 +24,7 @@ let page: Page
 let root: string
 
 test.beforeEach(async () => {
-  root = await fs.mkdtemp(path.join(os.tmpdir(), 'dcb-e2e-'))
+  root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'dcb-e2e-')))
   application = await electron.launch({
     args: ['out/main/index.js'],
     env: Object.fromEntries(

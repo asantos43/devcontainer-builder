@@ -23,7 +23,7 @@ The packaged application includes Electron, React, Monaco, xterm and the Dev Con
 - Private GitHub cloning into a volume: GitHub CLI authentication, or an explicitly selected saved token. Credentials are sent to a disposable helper over stdin and held on tmpfs; they are not stored in the repository or its Git configuration.
 - Dependency/image reports: host [Trivy](https://trivy.dev/docs/latest/). It may download vulnerability databases. Image analysis also requires the configured engine CLI to save the managed container's image.
 - Saved credentials: Windows DPAPI, macOS Keychain, or Linux Secret Service/KWallet. Unavailable encryption and Linux's `basic_text` fallback are refused.
-- Updates: a packaged application and a published release; private releases additionally need a runtime GitHub token.
+- Updates: a packaged application and a published release. This repository is public; no GitHub token is required.
 
 Run `npm run check:system` locally and use **Settings → Check tools & engine** for operation-specific diagnostics. Startup blocks unsupported OS/architecture, insufficient RAM/storage and unsupported Linux libc. Engine operations explain missing tools, engine version or Linux-container prerequisites. Native library loaders can fail before Electron reaches JavaScript; the DEB package manager and OS bundle/installer metadata are therefore part of enforcement.
 

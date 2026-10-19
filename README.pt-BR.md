@@ -59,7 +59,7 @@ Revise Dockerfiles, comandos do host e mounts antes de iniciar um projeto import
 
 ## Política do projeto
 
-O repositório começa privado. Após o primeiro commit, alterações exigem branch própria e pull request para `main`, sem merge automático. Essa política não é imposta aos projetos dos usuários.
+O repositório é público. Após o primeiro commit, alterações exigem branch própria e pull request para `main`, sem merge automático. Essa política não é imposta aos projetos dos usuários.
 
 A documentação é bilíngue. TODO, CHANGELOG, CONTRIBUTING e SECURITY existem somente em inglês. Instruções para agentes estão em [AGENTS.md](AGENTS.md) e `.agents/`.
 

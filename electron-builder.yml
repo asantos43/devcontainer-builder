@@ -52,5 +52,5 @@ publish:
   provider: github
   owner: asantos43
   repo: devcontainer-builder
-  private: true
+  private: false
   releaseType: draft

@@ -112,7 +112,7 @@ Existing projects can add missing scripts in Repository. Existing script content
 
 ## Application updates and release artifacts
 
-Packaged applications can check published GitHub Releases; enable automatic checks in Settings or use Check updates. Downloads and restart/install are explicit actions. For this private repository, launch with `GH_TOKEN` or `GITHUB_TOKEN` that can read releases. No token is stored in project settings or bundled into update metadata. A development `npm run dev` session cannot update itself.
+Packaged applications can check published GitHub Releases; enable automatic checks in Settings or use Check updates. Downloads and restart/install are explicit actions. This public repository requires no GitHub token to check releases. No token is stored in project settings or bundled into update metadata. A development `npm run dev` session cannot update itself.
 
 Local packaging never publishes a release. macOS produces DMG and ZIP plus update metadata; publish compatible signed artifacts/metadata manually after review. Automatic checking is off by default. Full end-to-end delivery requires a published release and signing/notarization on the target platform. Platform installers and release credentials still need the verification listed in TODO.
 

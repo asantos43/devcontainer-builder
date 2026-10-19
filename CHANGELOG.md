@@ -42,6 +42,10 @@ All notable changes are documented here.
 
 ### Fixed
 
+- Canonicalize helper-test paths and exercise symlink entry points on macOS.
+- Apply macOS production signing requirements when packaging with an architecture argument.
+- Use public GitHub release metadata without requiring repository credentials.
+
 - Remove the unintended outline around configuration navigation caused by a Tailwind utility class name collision.
 - Synchronize Start/Stop availability with the managed container state on project open, engine changes, window focus and periodic refresh; block conflicting actions during runtime operations.
 - Accept Dev Container variable references in mount destinations, workspace paths and volume names without replacing the saved templates.
