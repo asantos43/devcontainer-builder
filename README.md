@@ -44,7 +44,7 @@ The application bundles the Dev Containers CLI and uses Electron’s Node utilit
 npm run check          # TypeScript, ESLint, domain/file tests
 npm run test:e2e       # Build and Playwright Electron tests (graphical session required)
 npm run test:docker    # Real Docker build, lifecycle, mounts and exec; pulls Alpine
-npm run package:linux # Local Linux AppImage and DEB
+npm run package:linux # Local Linux AppImage, DEB and RPM
 npm run package:win   # Local Windows NSIS installer
 npm run package:mac   # macOS DMG/ZIP on macOS
 ```
