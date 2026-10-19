@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MPL-2.0
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { CredentialStore } from './Credentials'
 import { parseDocument } from 'yaml'
 import type { Config, Project } from '../../shared/types'
 import { patchConfig, readConfig } from '../../shared/config'
@@ -362,6 +363,14 @@ export function VolumeManager({
   const [branch, setBranch] = useState('main')
   const [result, setResult] = useState('')
   const [cloned, setCloned] = useState('')
+  const [credential, setCredential] = useState('')
+  const [credentials, setCredentials] = useState<string[]>([])
+  useEffect(() => {
+    void window.builder.vault
+      .list()
+      .then(setCredentials)
+      .catch(() => {})
+  }, [])
   return (
     <Section title={t('Volume data & repositories', 'Dados de volumes e repositórios')}>
       <button onClick={() => run(async () => setVolumes(await window.builder.docker.volumes()))}>
@@ -396,17 +405,33 @@ export function VolumeManager({
       >
         {t('Restore TAR into a new volume', 'Restaurar TAR em um novo volume')}
       </button>
-      <Field label={t('Public repository HTTPS URL', 'URL HTTPS do repositório público')}>
+      <Field label={t('Repository HTTPS URL', 'URL HTTPS do repositório')}>
         <input value={url} onChange={(e) => setUrl(e.target.value)} />
       </Field>
       <Field label="Branch">
         <input value={branch} onChange={(e) => setBranch(e.target.value)} />
       </Field>
+      <Field label={t('Clone authentication', 'Autenticação do clone')}>
+        <select value={credential} onChange={(e) => setCredential(e.target.value)}>
+          <option value="">{t('Public repository', 'Repositório público')}</option>
+          <option value="github-cli">GitHub CLI</option>
+          {credentials.map((name) => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </Field>
       <button
         disabled={!url || !name}
         onClick={() =>
           run(async () => {
-            const volume = await window.builder.maintenance.cloneVolume(name, url, branch)
+            const volume = await window.builder.maintenance.cloneVolume(
+              name,
+              url,
+              branch,
+              credential,
+            )
             setCloned(volume)
             setResult(volume)
           })
@@ -438,8 +463,8 @@ export function VolumeManager({
       {result && <Notice>{result}</Notice>}
       <p className="muted">
         {t(
-          'Stop containers before backup. Backups include all volume data, including secrets. Restore only accepts regular files/directories in a new volume; links and devices are rejected. Failed clones/restores leave partial data in that volume.',
-          'Pare os containers antes do backup. Backups incluem todos os dados, inclusive secrets. A restauração aceita apenas arquivos/diretórios em um volume novo; links e devices são rejeitados. Falhas preservam dados parciais no novo volume.',
+          'Stop containers before backup. Backups include all volume data, including secrets. Restore accepts regular files/directories, internal symbolic/hard links and POSIX metadata in a new volume; escaping links and devices are rejected. Failed clones/restores leave partial data in that volume.',
+          'Pare os containers antes do backup. Backups incluem todos os dados, inclusive secrets. A restauração aceita arquivos/diretórios, links simbólicos/hard links internos e metadados POSIX em um volume novo; links externos e devices são rejeitados. Falhas preservam dados parciais no novo volume.',
         )}
       </p>
     </Section>
@@ -459,19 +484,30 @@ export function CompareConfiguration({ project, run }: { project: Project; run: 
 }
 export function SecurityTools({ project, run }: { project: Project; run: Run }) {
   const t = useT()
+  const [target, setTarget] = useState<'filesystem' | 'image'>('filesystem')
   const [result, setResult] = useState('')
   return (
     <Section
       title={t('SBOM & vulnerability reports', 'SBOM e relatórios de vulnerabilidades')}
       description={t(
-        'Install Trivy on the host. Reports analyze project dependencies on disk; they do not scan the built image or running container.',
-        'Instale o Trivy no host. Os relatórios analisam dependências do projeto em disco; não analisam a imagem construída ou o container em execução.',
+        'Install Trivy on the host. Choose project files or the image of the managed container. Image scans save a temporary engine archive, then analyze it with Trivy.',
+        'Instale o Trivy no host. Escolha os arquivos do projeto ou a imagem do container gerenciado. A análise de imagem cria um arquivo temporário do motor e o analisa com Trivy.',
       )}
     >
+      <Field label={t('Scan target', 'Alvo da análise')}>
+        <select value={target} onChange={(e) => setTarget(e.target.value as typeof target)}>
+          <option value="filesystem">{t('Project files', 'Arquivos do projeto')}</option>
+          <option value="image">
+            {t('Built container image', 'Imagem do container construído')}
+          </option>
+        </select>
+      </Field>
       <div className="inline">
         <button
           onClick={() =>
-            run(async () => setResult(await window.builder.maintenance.scan(project.id, 'sbom')))
+            run(async () =>
+              setResult(await window.builder.maintenance.scan(project.id, 'sbom', target)),
+            )
           }
         >
           {t('Export CycloneDX SBOM', 'Exportar SBOM CycloneDX')}
@@ -479,7 +515,9 @@ export function SecurityTools({ project, run }: { project: Project; run: Run }) 
         <button
           onClick={() =>
             run(async () =>
-              setResult(await window.builder.maintenance.scan(project.id, 'vulnerabilities')),
+              setResult(
+                await window.builder.maintenance.scan(project.id, 'vulnerabilities', target),
+              ),
             )
           }
         >
@@ -500,6 +538,7 @@ export function ApplicationTools({ run, opened }: { run: Run; opened: (p: Projec
   const [result, setResult] = useState('')
   return (
     <>
+      <CredentialStore run={run} />
       <Section title={t('Registry authentication', 'Autenticação em registries')}>
         <Field label={t('Registry server', 'Servidor do registry')}>
           <input value={server} onChange={(e) => setServer(e.target.value)} />

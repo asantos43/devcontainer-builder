@@ -51,7 +51,9 @@ export function exclusionReason(relative: string): string | undefined {
     parts.some(
       (p) =>
         /\.(pem|key|p12|pfx|jks)$/i.test(p) ||
-        /^(id_rsa|id_ed25519|credentials|\.npmrc|\.netrc|\.git-credentials)$/i.test(p),
+        /^(id_rsa|id_ed25519|credentials|secrets\.encrypted\.json|\.npmrc|\.netrc|\.git-credentials)$/i.test(
+          p,
+        ),
     )
   )
     return 'credentials'

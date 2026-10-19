@@ -4,23 +4,23 @@
 
 Validated locally on Linux x64 with Node.js 22.23.1, Electron 44.9.0 and Docker Engine 29.9.1.
 
-| Check                                                                 | Result                                                                  |
-| --------------------------------------------------------------------- | ----------------------------------------------------------------------- |
-| TypeScript, ESLint, Prettier                                          | Passed                                                                  |
-| Domain/filesystem/runtime regression tests                            | 59 passed                                                               |
-| Electron/Playwright scenarios with Docker/Podman/OCI/Trivy opt-ins    | 13 passed, 1 permission-gated test skipped                              |
-| CLI build, lifecycle, host workspace, named volume and Dockerode exec | Passed                                                                  |
-| Official Docker outside of Docker Feature, non-root host access       | Passed                                                                  |
-| Interactive shell, remoteEnv, disconnect on stop                      | Passed                                                                  |
-| ZIP export and rebuild in a separate folder                           | Passed                                                                  |
-| Live Docker Hub image search and tag discovery                        | Passed                                                                  |
-| Linux AppImage and DEB generation                                     | Passed                                                                  |
-| Packaged Linux window and bundled CLI                                 | Passed                                                                  |
-| npm audit, including production dependencies                          | No known vulnerabilities                                                |
-| macOS Intel / Apple Silicon                                           | Blocked before runner startup by GitHub account billing/spending limits |
-| Windows execution and installer validation                            | Pending a Windows machine                                               |
-| Windows signing and macOS signing/notarization                        | Pending maintainer credentials                                          |
-| Creating/pushing a remote through the application                     | Private creation, selected commit and push passed                       |
+| Check                                                                 | Result                                                                     |
+| --------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| TypeScript, ESLint, Prettier                                          | Passed                                                                     |
+| Domain/filesystem/runtime regression tests                            | 113 passed                                                                 |
+| Electron/Playwright scenarios with Docker/Podman/OCI/Trivy opt-ins    | 23 distinct scenarios passed after targeted rerun; 1 permission-gated skip |
+| CLI build, lifecycle, host workspace, named volume and Dockerode exec | Passed                                                                     |
+| Official Docker outside of Docker Feature, non-root host access       | Passed                                                                     |
+| Interactive shell, remoteEnv, disconnect on stop                      | Passed                                                                     |
+| ZIP export and rebuild in a separate folder                           | Passed                                                                     |
+| Live Docker Hub image search and tag discovery                        | Passed                                                                     |
+| Linux AppImage and DEB generation                                     | Passed                                                                     |
+| Packaged Linux window and bundled CLI                                 | Passed                                                                     |
+| npm audit, including production dependencies                          | No known vulnerabilities                                                   |
+| macOS Intel / Apple Silicon                                           | Blocked before runner startup by GitHub account billing/spending limits    |
+| Windows execution and installer validation                            | Pending a Windows machine                                                  |
+| Windows signing and macOS signing/notarization                        | Pending maintainer credentials                                             |
+| Creating/pushing a remote through the application                     | Private creation, selected commit and push passed                          |
 
 The macOS workflow exists exclusively for macOS. GitHub reported that jobs could not start because recent account payments failed or the spending limit must be increased. No macOS test/build result is claimed. Resolve billing and rerun the workflow; Linux/Windows remain local.
 
@@ -42,3 +42,18 @@ This follow-up was validated on Fedora Linux x64 using Docker 29.9.1, Podman 5.8
 - Linux AppImage/DEB generation and the packaged window, bundled CLI and updater module passed. The updater's private-release credential requirement was verified without contacting releases. No release was published.
 
 Actual remote SSH/TLS servers, native Windows/PowerShell, Podman Machine, platform signing/notarization and installation of a signed application update remain unvalidated. Live registry login with user credentials was not performed; stdin/redaction handling has subprocess regression coverage. These limits are tracked in TODO and the guides.
+
+## Remaining software roadmap implementation
+
+On this branch, TypeScript, ESLint, formatting and 113 tests across 14 test files passed. The full Electron run exercised 24 scenarios: 22 passed, the authenticated-volume scenario failed, and the permission-gated remote-creation scenario was skipped. The stdin connection bug was corrected, then both the private-volume clone and VSIX theme scenarios passed in a targeted rerun (including importing the theme before first opening Monaco). This gives 23 distinct passing scenarios; no native Windows/macOS execution is implied.
+
+- Wizard palette/options, folder/ZIP review, conflicts, reusable snapshots, comment preservation and no-hook import passed through Electron. Local Git revision/subfolder checkout, archive rejection limits and OCI publication command construction have domain/filesystem regression coverage.
+- A real Docker build installed Claude Code, Codex CLI and OpenCode through the generated local Feature. All three version commands succeeded as the non-root development user; no provider account login was performed.
+- Docker and rootless Podman passed scripts, shell and TAR backup/restore, including relative symbolic/hard links and executable permissions. Private GitHub volume cloning passed and the restored Git configuration contained no forwarded credential.
+- Trivy image export/analysis produced real CycloneDX output without starting the fixture container or running its hooks. Existing filesystem SBOM/vulnerability checks also passed.
+- Native Linux system diagnostics passed. Supported/unsupported OS facts and production signing requirements were validated with simulated platform inputs, including a Windows target built from Linux.
+- AppImage and DEB generation passed with declared native dependencies. The packaged application window, bundled CLI and private-update credential preflight passed. npm audit reported zero known vulnerabilities.
+- The native Linux credential-store probe reported unavailable encryption with `basic_text`; no plaintext fallback was enabled and no credential was saved. Encryption adapter serialization, round trips and rejection cases have unit coverage. Real Secret Service/KWallet, macOS Keychain and Windows DPAPI round trips remain environment checks.
+- Actual OCI publication, live registry authentication, native installers/engines, signing/notarization, remote engines and signed update delivery were not performed. Deleting the archived validation repository was retried and returned HTTP 403 with the current GitHub credential.
+
+Linux artifacts remain in ignored `release/`; no application release or OCI template was published. The macOS workflow remains the only CI workflow.

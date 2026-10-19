@@ -212,10 +212,10 @@ export const features = [
 export const templates = {
   empty: { image: 'mcr.microsoft.com/devcontainers/base:ubuntu', remoteUser: 'vscode' },
   node: {
-    image: 'mcr.microsoft.com/devcontainers/javascript-node:1-22-bookworm',
+    image: 'mcr.microsoft.com/devcontainers/javascript-node:22-bookworm',
     remoteUser: 'node',
   },
-  python: { image: 'mcr.microsoft.com/devcontainers/python:1-3.12-bookworm', remoteUser: 'vscode' },
+  python: { image: 'mcr.microsoft.com/devcontainers/python:3.12-bookworm', remoteUser: 'vscode' },
   ubuntu: { image: 'ubuntu:24.04', remoteUser: 'root' },
 }
 export function wizardDefaults(): WizardData {

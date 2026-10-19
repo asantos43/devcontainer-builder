@@ -62,7 +62,7 @@ Em falhas ou limites do Docker Hub, informe a imagem manualmente. Referências d
 
 ## Temas
 
-Em **Configurações → Tema visual**, escolha a paleta e salve. A preferência persiste e é aplicada ao aplicativo, editores Monaco e terminais ativos sem desconectar o shell. Há Dark/Light Modern, Dark+/Light+, alto contraste, Monokai, Solarized, Abyss, Quiet Light, Kimbie Dark e Red. São adaptações das paletas; instalar extensões arbitrárias de temas do VS Code não é suportado.
+Em **Configurações → Tema visual**, escolha a paleta e salve. A preferência persiste e é aplicada ao aplicativo, editores Monaco e terminais ativos sem desconectar o shell. Há Dark/Light Modern, Dark+/Light+, alto contraste, Monokai, Solarized, Abyss, Quiet Light, Kimbie Dark e Red. São adaptações das paletas; use Importar tema do VS Code JSON/VSIX em Configurações para acrescentar paletas externas e gramáticas TextMate contribuídas. Includes e regras completas de escopo são preservados; JavaScript das extensões não é executado. Há suporte a tmTheme legado e bundles só de gramáticas; importe separadamente os bundles de dependências quando necessário.
 
 ## Podman e motores remotos
 
@@ -92,13 +92,13 @@ Em Features, consulte versões, prepare a troca de referência preservando opç�
 
 Ambiente oferece referências `${localEnv:NOME}` e encaminhamento do socket do agente SSH. Mantenha valores secretos e chaves privadas no host. Encaminhar o socket dá ao container acesso ao respectivo serviço.
 
-Instale [Trivy](https://trivy.dev/docs/latest/) no host para exportar SBOM CycloneDX ou relatório JSON de vulnerabilidades na aba Segurança. A análise considera **dependências do projeto em disco**, não a imagem construída. Trivy pode baixar bancos de dados. A operação pode ser cancelada no painel de saída; os relatórios são gravados no destino escolhido.
+Instale [Trivy](https://trivy.dev/docs/latest/) no host para exportar SBOM CycloneDX ou relatório JSON de vulnerabilidades na aba Segurança. Escolha **Arquivos do projeto** ou **Imagem do container construído**. A análise de imagem usa o identificador imutável da imagem do container gerenciado e um arquivo temporário do motor, sem executar seu conteúdo. Trivy pode baixar bancos de dados. A operação pode ser cancelada no painel de saída; os relatórios são gravados no destino escolhido.
 
 ## Repositórios e backups em volumes
 
-Portas e volumes oferece backup TAR de volumes parados e restauração em um **volume novo**. O backup inclui todos os dados, inclusive secrets existentes. A restauração aceita arquivos/diretórios em `data/` e rejeita links, devices e caminhos que escapem; arquivos com esses itens exigem migração manual. Uma cópia privada do TAR é validada antes de criar o volume. Interrupções preservam dados parciais no novo volume; dados existentes nunca são sobrescritos ou apagados automaticamente.
+Portas e volumes oferece backup TAR de volumes parados e restauração em um **volume novo**. O backup inclui todos os dados, inclusive secrets existentes. A restauração aceita arquivos/diretórios, links simbólicos relativos internos, hard links para arquivos regulares presentes no TAR e metadados POSIX de modo/dono/mtime/PAX em `data/`. Links absolutos/externos/cíclicos, devices e caminhos efetivos conflitantes são rejeitados. Uma cópia privada do TAR é validada antes de criar o volume. Interrupções preservam dados parciais no novo volume; dados existentes nunca são sobrescritos ou apagados automaticamente.
 
-É possível clonar repositórios HTTPS públicos em um volume novo, dentro de `/data/repository`, e selecioná-lo como workspace. Clones privados continuam disponíveis no host via GitHub CLI. O helper Alpine baixa Git e pacotes necessários; confira acesso à rede e a branch. O ZIP não inclui dados de volumes; exporte-os separadamente como TAR.
+É possível clonar repositórios HTTPS públicos ou privados em um volume novo, dentro de `/data/repository`, e selecioná-lo como workspace. Escolha autenticação GitHub CLI para GitHub ou um token salvo no armazenamento do sistema. O helper recebe a credencial por stdin, mantém o valor em tmpfs e o remove ao sair; redirects Git e credential helpers persistentes ficam desativados no clone autenticado. O helper Alpine baixa Git e pacotes necessários; confira acesso à rede e a branch. O ZIP não inclui dados de volumes; exporte-os separadamente como TAR.
 
 ## Scripts independentes gerados
 
@@ -121,3 +121,21 @@ Builds locais não publicam releases. macOS gera DMG, ZIP e metadados; a publica
 A execução Compose usa `COMPOSE_BAKE=false` nos provedores compatíveis e `BUILDX_BAKE_ENTITLEMENTS_FS=0` para versões recentes do Bake, pois a CLI oficial gera Dockerfiles de Features fora do contexto original. Iniciar/Testar e os scripts independentes executam builds confiáveis com acesso ao sistema de arquivos do host; revise Dockerfiles, arquivos Compose e hooks importados antes da execução.
 
 Os helpers POSIX incluem `.devcontainer/builder-podman.sh` para recuperar eventos Podman desde o começo da operação CLI. Mantenha esse arquivo junto dos scripts ao exportar. PowerShell usa o executável Podman nativo; Podman Machine e seu comportamento de eventos ainda exigem validação no Windows.
+
+## Templates, importação de pasta/ZIP e publicação
+
+Abra **Templates e importação** na barra de atividades ou escolha **Usar um template ou importar um Dev Container existente** no wizard. A paleta cobre Node.js/TypeScript, Python, Go, Java, .NET, Rust, PHP, Ruby e Compose/PostgreSQL. Pesquise, confira pré-requisitos/arquivos, selecione a configuração e preencha as opções. Escolha o destino, confirme a revisão e crie para abrir o editor principal com ajuste fino. A importação não constrói imagens nem executa hooks.
+
+As origens também incluem templates salvos, pastas, ZIPs e repositórios Git. Git permite revisão/tag/commit e subpasta; deixe a URL vazia para escolher um repositório local. Seletores nativos concedem acesso à origem/destino. A importação usa uma cópia imutável revisada, preserva comentários/campos desconhecidos e recusa substituir arquivos existentes, inclusive os que aparecerem após a prévia. Helpers ausentes são acrescentados; helpers da equipe são preservados e podem precisar de revisão do caminho em projetos com várias configurações.
+
+Use **Usar arquivos salvos do projeto atual** e **Salvar template reutilizável** para formar a biblioteca local a partir de um projeto. Credenciais reconhecidas por nome, metadados Git, dependências e symlinks são excluídos. Revise secrets embutidos e o código do projeto antes de reutilizar/publicar: filtros de nomes não identificam todo segredo dentro do texto. ZIPs rejeitam entradas criptografadas/especiais/duplicadas, escapes e nomes não portáveis; os limites são 5.000 entradas, 64 MiB por arquivo, 256 MiB expandidos e 128 MiB compactados.
+
+Templates podem fornecer metadados/opções em `devcontainer-template.json` e placeholders `${templateOption:NOME}`. O texto JSONC/Dockerfile/Compose permanece intacto, exceto pelas substituições explícitas de opções. Um template local nomeado pode ser aberto em Templates salvos e **publicado explicitamente** em um registry/namespace OCI após revisar o destino e marcar a confirmação. A autenticação no registry é separada. Salvar, importar, fazer build ou empacotar o aplicativo não publica templates.
+
+## Assistentes de programação e credenciais salvas
+
+Selecione Claude Code, Codex CLI e/ou OpenCode em Features, opcionalmente fixe suas versões npm e salve. O aplicativo acrescenta `.devcontainer/builder-ai-tools` e a referência à Feature local. Ela depende de Node.js 22 e instala os pacotes dos fornecedores durante o build confiável do container. Depois, autentique cada ferramenta dentro dele. Contas, acesso a provedores e downloads são separados da geração da configuração. Arquivos de uma Feature local personalizada não são sobrescritos.
+
+Configurações oferece armazenamento criptografado pelo SO para login em registries e clones privados em volumes. Após salvar, somente os nomes voltam à interface; os valores permanecem no processo principal. O armazenamento não injeta secrets automaticamente nas configurações exportadas nem nos scripts gerados. Referências `${localEnv:NOME}` continuam usando o ambiente do host.
+
+Consulte [requisitos de sistema dos releases](system-requirements.md) para plataformas suportadas, bibliotecas nativas, ferramentas por operação e assinatura de produção.

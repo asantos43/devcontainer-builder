@@ -4,6 +4,23 @@ import type { BuilderAPI, OperationEvent } from '../shared/types'
 const invoke = <T>(channel: string, value?: unknown): Promise<T> =>
   ipcRenderer.invoke(channel, value)
 const api: BuilderAPI = {
+  extensions: { list: () => invoke('extensions:list'), import: () => invoke('extensions:import') },
+  vault: {
+    list: () => invoke('vault:list'),
+    store: (name, value) => invoke('vault:store', { name, value }),
+    remove: (name) => invoke('vault:remove', name),
+    registry: (name, server, username) => invoke('vault:registry', { name, server, username }),
+  },
+  library: {
+    list: () => invoke('library:list'),
+    preview: (source) => invoke('library:preview', source),
+    fromProject: (id) => invoke('library:fromProject', id),
+    destination: (id) => invoke('library:destination', id),
+    apply: (id, destination, config, options) =>
+      invoke('library:apply', { id, destination, config, options }),
+    save: (id, name, description) => invoke('library:save', { id, name, description }),
+    publish: (id, registry, namespace) => invoke('library:publish', { id, registry, namespace }),
+  },
   settings: { get: () => invoke('settings:get'), save: (value) => invoke('settings:save', value) },
   maintenance: {
     registryLogin: (server, username, password) =>
@@ -15,10 +32,11 @@ const api: BuilderAPI = {
     featureLock: (id) => invoke('maintenance:featureLock', id),
     saveFeatureLock: (id, content) => invoke('maintenance:saveFeatureLock', { id, content }),
     compare: () => invoke('maintenance:compare'),
-    cloneVolume: (name, url, branch) => invoke('maintenance:cloneVolume', { name, url, branch }),
+    cloneVolume: (name, url, branch, credential) =>
+      invoke('maintenance:cloneVolume', { name, url, branch, credential }),
     backupVolume: (name) => invoke('maintenance:backupVolume', name),
     restoreVolume: (name) => invoke('maintenance:restoreVolume', name),
-    scan: (id, kind) => invoke('maintenance:scan', { id, kind }),
+    scan: (id, kind, target) => invoke('maintenance:scan', { id, kind, target }),
     update: (action) => invoke('maintenance:update', action),
   },
   projects: {

@@ -753,7 +753,8 @@ for (const engine of ['docker', 'podman'] as const) {
           workspaceMount: `type=volume,source=${volume},target=/workspace`,
           workspaceFolder: '/workspace',
           remoteUser: 'root',
-          postCreateCommand: 'printf backup-ready > /workspace/ready.txt',
+          postCreateCommand:
+            'printf backup-ready > /workspace/ready.txt && ln -s ready.txt /workspace/symbolic && ln /workspace/ready.txt /workspace/hard && chmod 751 /workspace/ready.txt',
         }),
       )
       const env = {
@@ -822,7 +823,11 @@ for (const engine of ['docker', 'podman'] as const) {
       ).toBe(restoredVolume)
       const verify = await client.createContainer({
         Image: 'alpine:3.22',
-        Cmd: ['cat', '/data/ready.txt'],
+        Cmd: [
+          '/bin/sh',
+          '-c',
+          'test -L /data/symbolic && test /data/hard -ef /data/ready.txt && test "$(stat -c %a /data/ready.txt)" = 751 && cat /data/symbolic',
+        ],
         HostConfig: { Mounts: [{ Type: 'volume', Source: restoredVolume, Target: '/data' }] },
       })
       try {

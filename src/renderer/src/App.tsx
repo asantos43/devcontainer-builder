@@ -35,9 +35,10 @@ import { InteractiveTerminal, OutputTerminal } from './Panels'
 
 import { defaultSettings as fallback } from '../../shared/settings'
 import { themes } from '../../shared/themes'
-import { ThemeProvider } from './themes'
+import { ThemeProvider, useImportedThemes } from './themes'
 import { ApplicationTools } from './Roadmap'
 import { useRuntimeState } from './useRuntimeState'
+import { TemplateLibrary } from './Library'
 function isDirty(p: Project | undefined): boolean {
   if (!p) return false
   let aux
@@ -77,6 +78,7 @@ function Workbench({
   const [project, setProject] = useState<Project>()
   const [tab, setTab] = useState<Tab>('general')
   const [wizard, setWizard] = useState(false)
+  const [library, setLibrary] = useState(false)
   const [preferences, setPreferences] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -182,6 +184,12 @@ function Workbench({
   }
   function open() {
     if (canLeave()) run(async () => opened(await window.builder.projects.open()))
+  }
+  function openLibrary() {
+    if (canLeave()) {
+      setWizard(false)
+      setLibrary(true)
+    }
   }
   function newProject() {
     if (canLeave()) {
@@ -318,6 +326,13 @@ function Workbench({
             onClick={() => setPreferences(false)}
           >
             <Boxes size={24} />
+          </button>
+          <button
+            title={t('Templates and import', 'Templates e importação')}
+            aria-label={t('Templates and import', 'Templates e importação')}
+            onClick={openLibrary}
+          >
+            <LayoutTemplate size={23} />
           </button>
           <div className="activity-spacer" />
           <button
@@ -840,8 +855,19 @@ function Workbench({
           <CircleHelp size={12} />
         </div>
       </footer>
+      {library && (
+        <TemplateLibrary
+          project={project}
+          close={() => setLibrary(false)}
+          created={(p) => {
+            setLibrary(false)
+            void opened(p)
+          }}
+        />
+      )}
       {wizard && (
         <Wizard
+          openLibrary={openLibrary}
           close={() => setWizard(false)}
           created={(p) => {
             setWizard(false)
@@ -982,6 +1008,7 @@ function SettingsEditor({
 }) {
   const t = useT()
   const [draft, setDraft] = useState(settings)
+  const importedThemes = useImportedThemes()
   const [contexts, setContexts] = useState<
     { name: string; endpoint: string; socketPath?: string }[]
   >([])
@@ -1008,13 +1035,26 @@ function SettingsEditor({
             value={draft.theme}
             onChange={(e) => setDraft({ ...draft, theme: e.target.value })}
           >
-            {themes.map((theme) => (
+            {[...themes, ...importedThemes].map((theme) => (
               <option key={theme.id} value={theme.id}>
                 {theme.name}
               </option>
             ))}
           </select>
         </Field>
+        <button
+          onClick={() =>
+            run(async () => {
+              const values = await window.builder.extensions.import()
+              if (values.length) {
+                window.dispatchEvent(new Event('dcb-themes'))
+                setDraft({ ...draft, theme: values[0].id })
+              }
+            })
+          }
+        >
+          {t('Import VS Code theme JSON/VSIX', 'Importar tema do VS Code JSON/VSIX')}
+        </button>
         <Field label={t('Container engine', 'Motor de containers')}>
           <select
             value={draft.engine}

@@ -23,9 +23,15 @@ Aplicativo Electron para criar, editar, testar e exportar ambientes de desenvolv
 - Scripts de start/stop/shell em POSIX shell e PowerShell na raiz dos projetos gerados.
 - Interface em português e inglês. Não exige serviço de IA.
 
+- Paleta pesquisável, templates reutilizáveis e importação revisada de pasta/ZIP/Git com revisão/subpasta.
+- Opções para instalar Claude Code, Codex CLI e OpenCode por uma Feature local gerada.
+- Temas JSON/VSIX do VS Code com gramáticas TextMate, credenciais criptografadas pelo SO, clones privados em volumes e análise de imagens.
+
 ## Executar localmente
 
 Requer Node.js 22.16+ e npm. Para executar containers, instale Docker Engine/Desktop ou Podman com o socket da API ativo. Git e GitHub CLI são necessários para as respectivas ações de repositório.
+
+Releases empacotados exigem desktop de 64 bits compatível, 2 GiB de RAM e 1 GiB livre para dados do aplicativo. Consulte [requisitos de sistema e dependências por operação](docs/pt-BR/system-requirements.md).
 
 ```sh
 npm ci

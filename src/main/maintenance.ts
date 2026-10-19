@@ -5,7 +5,8 @@ import path from 'node:path'
 import os from 'node:os'
 import { randomUUID } from 'node:crypto'
 import type { Project } from '../shared/types'
-import { cli } from './runtime'
+import { cli, runtimeState } from './runtime'
+import { docker, engineRun } from './engine'
 import { tracked, run } from './operations'
 import {
   atomicWrite,
@@ -178,7 +179,11 @@ export async function compare(): Promise<string | null> {
   if (stat.size > 2_000_000) throw new Error('Configuration exceeds 2 MB.')
   return fs.readFile(result.filePaths[0], 'utf8')
 }
-export async function scan(id: string, kind: 'sbom' | 'vulnerabilities'): Promise<string> {
+export async function scan(
+  id: string,
+  kind: 'sbom' | 'vulnerabilities',
+  target: 'filesystem' | 'image' = 'filesystem',
+): Promise<string> {
   const p = projectFor(id)
   const result = await dialog.showSaveDialog({
     defaultPath: `${kind}-${path.basename(p.root)}.json`,
@@ -186,19 +191,34 @@ export async function scan(id: string, kind: 'sbom' | 'vulnerabilities'): Promis
   })
   if (result.canceled || !result.filePath) return 'Cancelled.'
   const temporary = result.filePath + '.' + randomUUID() + '.partial'
+  const staging = await fs.mkdtemp(path.join(os.tmpdir(), 'dcb-scan-'))
   try {
     await tracked('tests', async (op) => {
+      const inputs = [p.root]
+      if (target === 'image') {
+        const state = await runtimeState(id)
+        if (!state.containerId)
+          throw new Error('Build/start this project before scanning its image.')
+        const image = (await (await docker()).getContainer(state.containerId).inspect()).Image
+        const archive = path.join(staging, 'image.tar')
+        await engineRun(['save', '--output', archive, image], {
+          timeout: 30 * 60 * 1000,
+          signal: op.signal,
+          output: op.output,
+        })
+        inputs.splice(0, 1, '--input', archive)
+      }
       await run(
         'trivy',
         [
-          'fs',
+          target === 'image' ? 'image' : 'fs',
           '--format',
           kind === 'sbom' ? 'cyclonedx' : 'json',
           '--scanners',
           'vuln',
           '--output',
           temporary,
-          p.root,
+          ...inputs,
         ],
         { timeout: 30 * 60 * 1000, signal: op.signal, output: op.output },
       )
@@ -208,6 +228,7 @@ export async function scan(id: string, kind: 'sbom' | 'vulnerabilities'): Promis
     return result.filePath
   } finally {
     await fs.rm(temporary, { force: true })
+    await fs.rm(staging, { recursive: true, force: true })
   }
 }
 let updaterPromise: Promise<import('electron-updater').AppUpdater> | undefined

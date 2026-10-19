@@ -62,7 +62,7 @@ Docker Hub network failures or rate limits can be bypassed with a manual image r
 
 ## Themes
 
-Select **Settings → Color theme**, then Save settings. The selected palette applies to the workbench, Monaco source/diff editors and active terminals without disconnecting a shell. Preferences survive restart. Options include Dark/Light Modern, Dark+/Light+, high contrast, Monokai, Solarized, Abyss, Quiet Light, Kimbie Dark and Red. These are built-in workbench palette adaptations; installing arbitrary VS Code theme extensions is not supported.
+Select **Settings → Color theme**, then Save settings. The selected palette applies to the workbench, Monaco source/diff editors and active terminals without disconnecting a shell. Preferences survive restart. Options include Dark/Light Modern, Dark+/Light+, high contrast, Monokai, Solarized, Abyss, Quiet Light, Kimbie Dark and Red. These are built-in workbench palette adaptations; use Import VS Code theme JSON/VSIX in Settings to add external color palettes and contributed TextMate grammars. Theme includes and complete scope rules are retained; extension JavaScript is never executed. Legacy tmTheme and grammar-only bundles are supported; import grammar dependency bundles separately when needed.
 
 ## Podman and remote engines
 
@@ -90,13 +90,13 @@ Features can query published versions, stage a reference replacement while prese
 
 Environment can add `${localEnv:NAME}` secret references and mount an SSH agent socket. Actual secret values and private keys should stay on the host. Agent and engine socket forwarding grant the container access to those host services.
 
-Install [Trivy](https://trivy.dev/docs/latest/) on the host to export a CycloneDX SBOM or a JSON vulnerability report from Security. These reports scan **project filesystem dependencies on disk**, not the built image. Trivy may download its databases; scan cancellation is available in the output panel. Reports are saved only to the selected destination.
+Install [Trivy](https://trivy.dev/docs/latest/) on the host to export a CycloneDX SBOM or a JSON vulnerability report from Security. Choose **Project files** or **Built container image**. Image scans analyze the managed container’s immutable image through a temporary engine archive; they do not execute its contents. Trivy may download its databases; scan cancellation is available in the output panel. Reports are saved only to the selected destination.
 
 ## Volume repositories and backups
 
-Ports & volumes offers backup of stopped volumes as TAR and restoration into a **new** volume. Backups contain all files, including any secrets present. Restoration accepts regular files/directories under `data/` and rejects links/devices/traversal; archives with those entries require a separate manual migration. Restore validates a private snapshot before creating the new volume. Interrupted restores preserve partial data in that new volume. Existing volumes are never overwritten or automatically removed.
+Ports & volumes offers backup of stopped volumes as TAR and restoration into a **new** volume. Backups contain all files, including any secrets present. Restoration accepts files/directories, safe internal relative symbolic links, hard links to archived regular files and POSIX mode/owner/mtime/PAX metadata under `data/`. Absolute/external/cyclic links, devices and conflicting effective paths are rejected. Restore validates a private snapshot before creating the new volume. Interrupted restores preserve partial data in that new volume. Existing volumes are never overwritten or automatically removed.
 
-Public HTTPS repositories can be cloned into a new volume at `/data/repository`, then selected as the workspace. Private repository cloning remains available on the host through GitHub CLI. Cloning uses an Alpine helper with Git and downloads its required packages. Review network availability and the selected branch. ZIP export continues to exclude volume data; use TAR separately.
+HTTPS repositories can be cloned into a new volume at `/data/repository`, then selected as the workspace. Private GitHub repositories can use GitHub CLI authentication or a saved access token. Credentials travel through stdin into a disposable helper’s private tmpfs and are never embedded in the repository URL/configuration; credential helpers, redirects and hooks are disabled for that private clone. Cloning uses an Alpine helper with Git and downloads its required packages. Review network availability and the selected branch. ZIP export continues to exclude volume data; use TAR separately.
 
 ## Generated standalone scripts
 
@@ -119,3 +119,21 @@ Local packaging never publishes a release. macOS produces DMG and ZIP plus updat
 Compose execution uses `COMPOSE_BAKE=false` on providers that support it and `BUILDX_BAKE_ENTITLEMENTS_FS=0` for compatibility with recent Bake versions: the official CLI generates Feature Dockerfiles outside the original build context. Start/Tests and standalone helper scripts therefore run as trusted build operations with host filesystem access; review imported Dockerfiles, Compose files and lifecycle hooks first.
 
 POSIX helpers include `.devcontainer/builder-podman.sh` to replay Podman startup events from the beginning of the CLI operation. Keep this support file with the root scripts when exporting. PowerShell uses the native Podman executable; Podman Machine and its native event behavior still require Windows validation.
+
+## Templates, folder/ZIP import and publishing
+
+Open **Templates and import** in the activity bar, or choose **Use a template or import an existing Dev Container** inside the creation wizard. The development palette covers Node.js/TypeScript, Python, Go, Java, .NET, Rust, PHP, Ruby and Compose/PostgreSQL. Search, preview prerequisites/files, select a configuration and enter template options. Choose a destination, acknowledge the review, then create and open the main editor for fine-tuning. Nothing builds or runs hooks during import.
+
+Sources also include saved templates, folders, ZIPs and Git repositories. Git supports an explicit revision/tag/commit and template subfolder; leave the URL empty to choose a local repository. Native pickers grant source/destination access. Imports use an immutable reviewed snapshot, preserve comments/unknown fields and refuse existing-file replacement, including files that appear after preview. Missing lifecycle helpers are added; existing team helpers are retained and may need their configuration path reviewed for multi-configuration projects.
+
+Use **Use saved files from current project** and **Save reusable template** to build a local library from an existing project. Recognized credential files, Git metadata, dependencies and symlinks are excluded. Review inline secrets and project source before reuse or publication: filename exclusions cannot identify every secret embedded in configuration text. ZIPs reject encrypted/special/duplicate entries, path escapes and nonportable names; limits are 5,000 entries, 64 MiB per file, 256 MiB expanded total and 128 MiB compressed.
+
+Templates can provide `devcontainer-template.json` metadata/options and `${templateOption:NAME}` placeholders. JSONC, Dockerfile and Compose text remain intact except for explicit option substitutions. A named local template can be previewed from Saved templates and **published explicitly** to an OCI registry/namespace after reviewing the destination and enabling the publication checkbox. Registry authentication is separate. No publication happens when saving, importing, building or packaging the application.
+
+## AI coding tools and saved credentials
+
+Select Claude Code, Codex CLI and/or OpenCode in Features, optionally pin their npm versions, then save. The application adds `.devcontainer/builder-ai-tools` and a local Feature reference. That Feature depends on Node.js 22 and installs the selected vendor packages during the trusted container build. Authenticate with each tool inside the container afterward. Accounts, provider access and network downloads are separate from generating the configuration. Custom local Feature files are never overwritten.
+
+Settings offers an encrypted OS credential store for registry login and private volume cloning. Only names are returned to the UI after storage; secret values remain in the main process. This store does not automatically inject secrets into exported configurations or generated lifecycle scripts. Existing `${localEnv:NAME}` references continue to use the host environment.
+
+See [release system requirements](system-requirements.md) for supported platforms, native libraries, per-operation tools and production signing configuration.
