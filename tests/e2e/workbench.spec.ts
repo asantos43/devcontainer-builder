@@ -76,7 +76,10 @@ test('wizard creates a host repository and visual Dockerfile comments survive sa
   expect(await fs.readFile(path.join(destination, '.git/HEAD'), 'utf8')).toContain(
     'refs/heads/main',
   )
-  await page.locator('.outline').getByRole('button', { name: 'Dockerfile', exact: true }).click()
+  await page
+    .locator('.configuration-nav')
+    .getByRole('button', { name: 'Dockerfile', exact: true })
+    .click()
   await page.getByLabel('Novo bloco').selectOption('#')
   await page
     .getByLabel('Conteúdo', { exact: true })
@@ -476,7 +479,7 @@ test('Docker runtime, interactive shell and exported ZIP rebuild through the rea
     await expect.poll(eventText).toContain('shell-yes')
     await page.getByRole('button', { name: 'Desconectar', exact: true }).click()
     await page
-      .locator('.outline')
+      .locator('.configuration-nav')
       .getByRole('button', { name: 'Distribuição', exact: true })
       .click()
     await page.getByRole('button', { name: 'Analisar projeto salvo', exact: true }).click()
